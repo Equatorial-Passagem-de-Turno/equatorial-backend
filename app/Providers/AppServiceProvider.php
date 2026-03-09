@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use App\Domain\Turno\Repositories\TurnoRepositoryInterface;
-use App\Infrastructure\Repositories\EloquentTurnoRepository;
+use App\Domain\Shift\Repositories\ShiftRepositoryInterface;
+use App\Infrastructure\Repositories\EloquentShiftRepository;
+use App\Domain\Occurrence\Repositories\OccurrenceRepositoryInterface;
+use App\Infrastructure\Repositories\EloquentOccurrenceRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -14,13 +16,13 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(
-            TurnoRepositoryInterface::class,
-            EloquentTurnoRepository::class
+            \App\Domain\Shift\Repositories\ShiftRepositoryInterface::class,
+            \App\Infrastructure\Repositories\EloquentShiftRepository::class
         );
 
         $this->app->bind(
-    \App\Domain\Ocorrencia\Repositories\OcorrenciaRepositoryInterface::class,
-    \App\Infrastructure\Repositories\EloquentOcorrenciaRepository::class
+            \App\Domain\Occurrence\Repositories\OccurrenceRepositoryInterface::class,
+            \App\Infrastructure\Repositories\EloquentOccurrenceRepository::class
         );
     }
 
