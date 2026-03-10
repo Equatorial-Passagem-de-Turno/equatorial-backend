@@ -28,11 +28,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Occurrence routes
     Route::prefix('occurrences')->group(function () {
-        Route::get('/', [OccurrenceController::class, 'index']);       // Listar todas
-        Route::post('/', [OccurrenceController::class, 'store']);      // Criar nova
-        Route::get('/{id}', [OccurrenceController::class, 'show']);    // Mostrar uma
-        Route::put('/{id}', [OccurrenceController::class, 'update']);  // Atualizar
-        Route::delete('/{id}', [OccurrenceController::class, 'destroy']); // Excluir
+        Route::get('/', [OccurrenceController::class, 'index']);       
+        Route::post('/', [OccurrenceController::class, 'store']);      
+        Route::get('/{id}', [OccurrenceController::class, 'show']);   
+        Route::put('/{id}', [OccurrenceController::class, 'update']); 
+        Route::delete('/{id}', [OccurrenceController::class, 'destroy']); 
         Route::post('/bulk', [OccurrenceController::class, 'bulkStore']);
     });
 });

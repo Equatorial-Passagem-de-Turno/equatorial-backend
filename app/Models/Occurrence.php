@@ -9,7 +9,6 @@ class Occurrence extends Model
 {
     use HasFactory;
 
-    // Desativa o auto-incremento padrão do Laravel (pois vamos usar IDs como OC-1234)
     public $incrementing = false;
     protected $keyType = 'string';
 

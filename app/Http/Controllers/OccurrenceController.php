@@ -3,22 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Application\Services\Occurrence\RegisterOccurrenceService;
-use App\Models\Occurrence; // Importe o seu Model aqui
+use App\Models\Occurrence;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Exception;
 
 class OccurrenceController extends Controller
 {
-    // 1. READ (Listar Todas)
     public function index(): JsonResponse
     {
-        // Trazendo todas do banco. Ajuste o 'with' se tiver relacionamentos (ex: 'location')
         $occurrences = Occurrence::orderBy('created_at', 'desc')->get();
         return response()->json($occurrences);
     }
 
-    // 2. CREATE (Sua função store original mantida)
     public function store(Request $request)
     {
         try {
@@ -32,10 +29,10 @@ class OccurrenceController extends Controller
                 'priority' => $request->priority,
                 'status' => $request->status,
                 'description' => $request->description,
-                'location' => $request->location, // O Laravel salva como JSON automaticamente
-                'link_type' => $request->linkType, // Mapeando do React para o Banco
-                'link_value' => $request->linkValue, // Mapeando do React para o Banco
-                'attachments' => $request->attachments, // O Laravel salva como JSON automaticamente
+                'location' => $request->location, 
+                'link_type' => $request->linkType,
+                'link_value' => $request->linkValue,
+                'attachments' => $request->attachments, 
             ]);
 
             return response()->json([
@@ -52,14 +49,12 @@ class OccurrenceController extends Controller
         }
     }
 
-    // 3. READ SINGLE (Ler apenas uma)
     public function show($id): JsonResponse
     {
         $occurrence = Occurrence::findOrFail($id);
         return response()->json($occurrence);
     }
 
-    // 4. UPDATE (Atualizar)
     public function update(Request $request, $id): JsonResponse
     {
         try {
@@ -75,7 +70,6 @@ class OccurrenceController extends Controller
         }
     }
 
-    // 5. DELETE (Excluir)
     public function destroy($id): JsonResponse
     {
         $occurrence = Occurrence::findOrFail($id);
@@ -91,10 +85,8 @@ class OccurrenceController extends Controller
             $userId = $request->user()->id;
 
             foreach ($occurrences as $data) {
-                // Criamos cada ocorrência vinculando ao novo usuário
                 Occurrence::create(array_merge($data, [
                     'user_id' => $userId,
-                    // Opcional: marcar que foi herdada
                     'description' => $data['description'] . "\n(Herdada do turno anterior)"
                 ]));
             }

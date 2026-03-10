@@ -136,7 +136,6 @@ class ShiftController extends Controller
                     'comments' => [],
                     'reminders' => []
                 ],
-                // Adicione as outras ocorrências aqui com a mesma estrutura...
             ]
         ];
 
