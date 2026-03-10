@@ -49,4 +49,9 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function shifts()
+    {
+        return $this->hasMany(Shift::class);
+    }
 }

@@ -2,78 +2,56 @@
 
 namespace App\Application\Services\Shift;
 
-use App\Domain\Shift\Entities\Shift;
-use App\Domain\Shift\Enums\ShiftStatus;
-use App\Domain\Shift\Enums\VoltageLevel;
-use App\Domain\Shift\Repositories\ShiftRepositoryInterface;
-use App\Domain\Occurrence\Repositories\OccurrenceRepositoryInterface;
-use App\Domain\Occurrence\Enums\OccurrenceType;
-use App\Domain\Occurrence\Enums\OccurrenceStatus;
 use App\Models\User;
-use DateTimeImmutable;
+use App\Models\OperationDesk;
+use App\Models\Shift;
 use Illuminate\Support\Facades\DB;
 use Exception;
 
 class StartShiftService
 {
-    public function __construct(
-        protected ShiftRepositoryInterface $shiftRepository,
-        protected OccurrenceRepositoryInterface $occurrenceRepository
-    ) {}
-
-    /**
-     * Starts a new shift for the operator, performing vertical inheritance of pending occurrences.
-     * * @param int $userId
-     * @return Shift
-     * @throws Exception
-     */
-    public function execute(int $userId): Shift
+    public function execute(int $userId, $deskId, string $role): Shift
     {
         DB::beginTransaction();
 
         try {
-            // 1. Validate if the operator already has an active shift
-            $activeShift = $this->shiftRepository->findActiveShiftByUserId($userId);
-            if ($activeShift) {
-                throw new Exception('There is already a shift in progress for this operator.');
+            $user = User::findOrFail($userId);
+            $desk = OperationDesk::findOrFail($deskId);
+
+            // Verifica se o usuário já tem turno ativo
+            if ($user->shifts()->where('status', 'in_progress')->exists()) {
+                throw new Exception('Já existe um turno em andamento para este operador.');
             }
 
-            // 2. Identify Operator Profile (Voltage Level)
-            $user = User::findOrFail($userId);
-            $userVoltageLevel = VoltageLevel::from($user->voltage_level);
+            // Busca o último turno da MESMA MESA para fazer a Herança de pendências
+            $previousShift = Shift::where('operation_desk_id', $desk->id)
+                ->where('status', 'finished')
+                ->latest('end')
+                ->first();
 
-            // 3. Search for the Last Finished Shift for Vertical Inheritance
-            $previousShift = $this->shiftRepository->findLastFinishedByVoltage($userVoltageLevel);
+            // Criamos o turno a partir do relacionamento com o Usuário
+            $newShift = $user->shifts()->make([
+                'role'              => $role,
+                'start'             => now(),
+                'status'            => 'in_progress',
+                'previous_shift_id' => $previousShift?->id,
+            ]);
 
-            // 4. Instantiate and Save the New Shift
-            $newShift = new Shift(
-                id: null,
-                userId: $userId,
-                start: new DateTimeImmutable(),
-                end: null,
-                status: ShiftStatus::IN_PROGRESS,
-                voltageLevel: $userVoltageLevel,
-                previousShiftId: $previousShift?->id
-            );
+            // Associa a mesa e salva
+            $newShift->desk()->associate($desk);
+            $newShift->save();
 
-            $savedShift = $this->shiftRepository->save($newShift);
-
-            // 5. Inheritance Engine: Transfer open pending occurrences
+            // transfere as ocorrências abertas da mesa para este novo turno
             if ($previousShift) {
-                $pendingOccurrences = $this->occurrenceRepository->findByShiftTypeAndStatus(
-                    $previousShift->id,
-                    OccurrenceType::PENDING,
-                    OccurrenceStatus::OPEN
-                );
-
-                foreach ($pendingOccurrences as $occurrence) {
-                    $occurrence->shiftId = $savedShift->id;
-                    $this->occurrenceRepository->save($occurrence);
-                }
+                $previousShift->occurrences()
+                    ->where('type', 'pending')
+                    ->where('status', 'open')
+                    ->update(['shift_id' => $newShift->id]);
             }
 
             DB::commit();
-            return $savedShift;
+            
+            return $newShift;
 
         } catch (Exception $e) {
             DB::rollBack();

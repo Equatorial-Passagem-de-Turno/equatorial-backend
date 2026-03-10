@@ -11,50 +11,54 @@ use Exception;
 
 class ShiftController extends Controller
 {
-    /**
-     * Starts a new shift for the authenticated user.
-     */
-    public function start(
-        Request $request,
-        StartShiftService $service
-    ): JsonResponse {
-        try {
-            // O ID do usuário é obtido diretamente do token de autenticação
-            $shift = $service->execute(
-                userId: $request->user()->id
-            );
 
-            return response()->json([
-                'id' => $shift->id,
-                'status' => $shift->status->value,
-                'start' => $shift->start->format('Y-m-d H:i:s'),
-                'voltage_level' => $shift->voltageLevel->value,
-            ], 201);
+    public function start(Request $request, StartShiftService $service): JsonResponse 
+        {
+            $request->validate([
+                'operation_desk_id' => 'required|exists:operation_desks,id',
+                'role'              => 'required|string',
+            ]);
 
-        } catch (DomainException | Exception $e) {
-            return response()->json([
-                'error' => $e->getMessage()
-            ], 400);
+            try {
+                $shift = $service->execute(
+                    $request->user()->id,
+                    $request->input('operation_desk_id'),
+                    $request->input('role')
+                );
+
+                return response()->json([
+                    'id' => $shift->id,
+                    'status' => $shift->status,
+                    'start' => $shift->start->format('Y-m-d H:i:s'),
+                    'role' => $shift->role,
+                    'desk' => [
+                        'id' => $shift->desk->id,
+                        'name' => $shift->desk->name,
+                    ]
+                ], 201);
+
+            } catch (Exception $e) {
+                return response()->json([
+                    'error' => $e->getMessage()
+                ], 400);
+            }
         }
-    }
 
-    /**
-     * Finishes the current shift for the authenticated user.
-     */
-    public function finish(
-        Request $request,
-        FinishShiftService $service
-    ): JsonResponse {
+    public function finish(Request $request, FinishShiftService $service): JsonResponse {
         $request->validate([
-            'briefing' => 'required|string|min:10' // Exige pelo menos 10 caracteres
+            'briefing' => 'required|string|min:10',
+            'proximoOperador' => 'nullable|string',
+            'pendenciasResolvidas' => 'nullable|array'
         ]);
+
         try {
             $userId = $request->user()->id;
 
-            // O briefing é enviado no corpo da requisição (POST)
             $shift = $service->execute(
                 $userId,
-                $request->input('briefing')
+                $request->input('briefing'),
+                $request->input('proximoOperador'),
+                $request->input('pendenciasResolvidas', [])
             );
 
             return response()->json([

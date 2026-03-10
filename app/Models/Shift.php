@@ -11,18 +11,15 @@ class Shift extends Model
 {
     use HasFactory;
 
-    /**
-     * O Laravel tentará encontrar a tabela 'shifts' automaticamente,
-     * mas é boa prática declarar explicitamente.
-     */
     protected $table = 'shifts';
 
     protected $fillable = [
         'user_id',
+        'operation_desk_id', 
+        'role',              
         'start',
         'end',
         'status',
-        'voltage_level',
         'previous_shift_id',
         'observations',
     ];
@@ -31,30 +28,30 @@ class Shift extends Model
         'start' => 'datetime',
         'end' => 'datetime',
         'status' => 'string',
-        'voltage_level' => 'string',
     ];
 
-    /**
-     * Relacionamento com o Utilizador (Operador)
-     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Relacionamento com as Ocorrências deste turno
-     */
     public function occurrences(): HasMany
     {
         return $this->hasMany(Occurrence::class, 'shift_id');
     }
 
-    /**
-     * Relacionamento com o turno anterior (Herança)
-     */
     public function previousShift(): BelongsTo
     {
         return $this->belongsTo(Shift::class, 'previous_shift_id');
+    }
+
+    public function desk(): BelongsTo
+    {
+        return $this->belongsTo(OperationDesk::class, 'operation_desk_id');
+    }
+
+    public function roleDetails(): BelongsTo
+    {
+        return $this->belongsTo(Roles::class, 'role', 'name');
     }
 }

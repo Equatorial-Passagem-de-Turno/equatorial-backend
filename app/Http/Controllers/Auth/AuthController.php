@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Shift;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,10 +36,28 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        // VERIFICAÇÃO DO TURNO ATIVO 
+        $activeShift = Shift::with('desk')
+            ->where('user_id', $user->id)
+            ->whereNull('end')
+            ->first();
+
+        $activeShiftData = null;
+        if ($activeShift) {
+            $activeShiftData = [
+                'role' => $activeShift->role,
+                'desk' => [
+                    'id' => (string) $activeShift->operation_desk_id,
+                    'nome' => $activeShift->desk ? $activeShift->desk->name : 'Mesa Operacional'
+                ]
+            ];
+        }
+
         return response()->json([
             'message' => 'Login realizado com sucesso',
             'token' => $token,
-            'usuario' => $user
+            'usuario' => $user,
+            'active_shift' => $activeShiftData // Retorna null ou os dados do turno
         ]);
     }
 
@@ -79,7 +98,7 @@ class AuthController extends Controller
         $resetLink = $frontendUrl . '/reset-password?token=' . $token . '&email=' . $request->email;
 
         return response()->json([
-            'message' => 'Link de recuperação gerado com sucesso.',     
+            'message' => 'Link de recuperação gerado com sucesso.',    
             'debug_link' => $resetLink // REMOVER EM PRODUÇÃO
         ]);
     }
