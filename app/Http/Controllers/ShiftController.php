@@ -78,4 +78,68 @@ class ShiftController extends Controller
             ], 400);
         }
     }
+
+    public function getPreviousShift(Request $request)
+    {
+        $data = [
+            'previousOperator' => 'JOÃO MENDES (MT)',
+            'shiftTime' => '19:00 - 07:00',
+            'date' => '04/12/2025',
+            'reportText' => 'Turno com manobras programadas na região central. Atenção para pendências na SE-Centro.',
+            'criticalCount' => 2,
+            'occurrences' => [
+                [
+                    'id' => 'OC-202512-7327',
+                    'title' => 'Manobra para manutenção preventiva',
+                    'category' => 'Manobra Programada',
+                    'priority' => 'crítica',
+                    'status' => 'Em Andamento',
+                    'createdAt' => '04/12/2025, 17:34:05',
+                    'timestamp' => 'Há 20 min',
+                    'reportedBy' => 'Operador 2',
+                    'location' => [
+                        'alimentador' => 'AL-03',
+                        'subestacao' => 'SE-CENTRO',
+                        'city' => 'MACEIO',
+                        'neighborhood' => 'CENTRO',
+                        'zone' => 'Urbana',
+                        'address' => 'Rua do Comércio, 500',
+                        'reference' => 'Ao lado do banco'
+                    ],
+                    'description' => 'Manobra iniciada conforme programação. Aguardando equipe de linha viva.',
+                    'linkType' => 'OS',
+                    'linkValue' => '1111',
+                    'attachments' => [],
+                    'comments' => [],
+                    'reminders' => []
+                ],
+                [
+                    'id' => 'OC-202512-7328',
+                    'title' => 'Cabo Partido na via pública',
+                    'category' => 'Emergencial',
+                    'priority' => 'alta',
+                    'status' => 'Pendente',
+                    'createdAt' => '04/12/2025, 18:10:00',
+                    'timestamp' => 'Há 10 min',
+                    'reportedBy' => 'Call Center',
+                    'location' => [
+                        'alimentador' => 'AL-05',
+                        'subestacao' => 'SE-TABULEIRO',
+                        'city' => 'MACEIO',
+                        'neighborhood' => 'TABULEIRO',
+                        'address' => 'Av. Durval de Góes Monteiro',
+                    ],
+                    'description' => 'Popular informou cabo faiscando no chão. Risco iminente.',
+                    'linkType' => 'OS',
+                    'linkValue' => '1112',
+                    'attachments' => [],
+                    'comments' => [],
+                    'reminders' => []
+                ],
+                // Adicione as outras ocorrências aqui com a mesma estrutura...
+            ]
+        ];
+
+        return response()->json($data);
+    }
 }

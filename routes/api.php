@@ -23,10 +23,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('shifts')->group(function () {
         Route::post('/start', [ShiftController::class, 'start']);
         Route::post('/finish', [ShiftController::class, 'finish']);
+        Route::get('/handover/previous', [ShiftController::class, 'getPreviousShift']);
     });
 
     // Occurrence routes
     Route::prefix('occurrences')->group(function () {
-        Route::post('/', [OccurrenceController::class, 'store']);
+        Route::get('/', [OccurrenceController::class, 'index']);       // Listar todas
+        Route::post('/', [OccurrenceController::class, 'store']);      // Criar nova
+        Route::get('/{id}', [OccurrenceController::class, 'show']);    // Mostrar uma
+        Route::put('/{id}', [OccurrenceController::class, 'update']);  // Atualizar
+        Route::delete('/{id}', [OccurrenceController::class, 'destroy']); // Excluir
+        Route::post('/bulk', [OccurrenceController::class, 'bulkStore']);
     });
 });

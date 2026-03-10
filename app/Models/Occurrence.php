@@ -2,24 +2,45 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Occurrence extends Model
 {
-    protected $table = 'occurrences';
+    use HasFactory;
+
+    // Desativa o auto-incremento padrão do Laravel (pois vamos usar IDs como OC-1234)
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
+        'id',
+        'user_id',
         'shift_id',
+        'supervisor_id',
         'title',
-        'description',
-        'type',
+        'category',
+        'priority',
         'status',
-        'supervisor_id'
+        'description',
+        'location',
+        'link_type',
+        'link_value',
+        'attachments'
     ];
 
-    public function shift(): BelongsTo
+    protected $casts = [
+        'location' => 'array',
+        'attachments' => 'array',
+    ];
+
+    public function user()
     {
-        return $this->belongsTo(Shift::class);
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function shift()
+    {
+        return $this->belongsTo(Shift::class, 'shift_id');
     }
 }
