@@ -2,52 +2,75 @@
 
 namespace App\Application\Services\Shift;
 
-use App\Domain\Shift\Repositories\ShiftRepositoryInterface;
-use App\Domain\Shift\Enums\ShiftStatus;
-use App\Domain\Shift\Entities\Shift;
+use App\Models\Shift;
+use App\Models\Occurrence;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use DateTimeImmutable;
 use Exception;
 
 class FinishShiftService
 {
-    public function __construct(
-        protected ShiftRepositoryInterface $shiftRepository
-    ) {}
-
-    /**
-     * Finishes the current shift for the user.
-     * * @param int $userId
-     * @param string|null $briefing
-     * @return Shift
-     * @throws Exception
-     */
-    public function execute(int $userId, ?string $briefing = null): Shift
+    public function execute(int $userId, string $briefing, ?string $nextOperator, array $resolvedOccurrences)
     {
         DB::beginTransaction();
 
         try {
-            // 1. Busca o turno ativo usando o novo padrão de repositório
-            $shift = $this->shiftRepository->findActiveShiftByUserId($userId);
+            $shift = Shift::where('user_id', $userId)
+                ->where('status', 'in_progress')
+                ->firstOrFail();
 
-            if (!$shift) {
-                throw new Exception('No active shift found for this operator.');
+            $user = User::find($userId);
+            $operatorName = $user ? $user->name : 'Operador';
+
+            $nextOpId = null;
+            if ($nextOperator && is_numeric($nextOperator)) {
+                $nextOpId = (int) $nextOperator;
             }
 
-            // 2. Utiliza o método finish da entidade Shift para garantir a lógica de domínio
-            // Isso atualizará o status para FINISHED, definirá o fim e o briefing
-            $shift->finish($briefing ?? 'No briefing provided.');
+            $shift->update([
+                'briefing'         => $briefing,
+                'end'              => now(),
+                'status'           => 'finished',
+                'next_operator_id' => $nextOpId
+            ]);
 
-            // 3. Salva a entidade atualizada
-            $savedShift = $this->shiftRepository->save($shift);
+            $occurrences = Occurrence::where('shift_id', $shift->id)->get();
+
+            foreach ($occurrences as $occurrence) {
+                $isResolvedNow = in_array($occurrence->id, $resolvedOccurrences);
+                
+                $isAlreadyResolved = in_array(strtolower($occurrence->status), ['resolved', 'finished', 'resolvida', 'finalizada']);
+
+                $text = null;
+
+                if ($isResolvedNow) {
+                    $text = "Ocorrência resolvida pelo operador {$operatorName} no turno {$shift->id}";
+                    $occurrence->status = 'resolved';
+                } elseif (!$isAlreadyResolved) {
+                    $text = "Ocorrência deixada pelo operador {$operatorName} do turno {$shift->id} para o próximo turno";
+                }
+
+                if ($text) {
+                    $comments = $occurrence->comments ?? [];
+                    $comments[] = [
+                        'id' => 'sys-' . uniqid(),
+                        'author' => 'Sistema',
+                        'text' => $text,
+                        'type' => 'Sistema',
+                        'createdAt' => now()->toISOString()
+                    ];
+
+                    $occurrence->comments = $comments;
+                    $occurrence->save();
+                }
+            }
 
             DB::commit();
-
-            return $savedShift;
+            return $shift;
 
         } catch (Exception $e) {
             DB::rollBack();
-            throw $e;
+            throw new Exception("Erro interno ao finalizar: " . $e->getMessage());
         }
     }
 }
