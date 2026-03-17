@@ -15,7 +15,7 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
-    
+
     Route::get('/roles', [RoleController::class, 'index']);
     Route::get('/operation-desks', [OperationDeskController::class, 'index']);
 
@@ -23,16 +23,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('shifts')->group(function () {
         Route::post('/start', [ShiftController::class, 'start']);
         Route::post('/finish', [ShiftController::class, 'finish']);
+        Route::get('/current', [ShiftController::class, 'getCurrentShift']);
         Route::get('/handover/previous', [ShiftController::class, 'getPreviousShift']);
+        Route::get('/previous-details', [ShiftController::class, 'getPreviousShiftDetails']);
+        Route::get('/by-date', [ShiftController::class, 'getShiftsByDate']);
     });
 
     // Occurrence routes
     Route::prefix('occurrences')->group(function () {
-        Route::get('/', [OccurrenceController::class, 'index']);       
-        Route::post('/', [OccurrenceController::class, 'store']);      
-        Route::get('/{id}', [OccurrenceController::class, 'show']);   
-        Route::put('/{id}', [OccurrenceController::class, 'update']); 
-        Route::delete('/{id}', [OccurrenceController::class, 'destroy']); 
+        Route::get('/', [OccurrenceController::class, 'index']);
+        Route::post('/', [OccurrenceController::class, 'store']);
+        Route::get('/{id}', [OccurrenceController::class, 'show']);
+        Route::put('/{id}', [OccurrenceController::class, 'update']);
+        Route::delete('/{id}', [OccurrenceController::class, 'destroy']);
         Route::post('/bulk', [OccurrenceController::class, 'bulkStore']);
     });
 });

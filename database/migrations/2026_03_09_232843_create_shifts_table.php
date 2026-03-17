@@ -20,7 +20,8 @@ return new class extends Migration
             $table->timestamp('start');
             $table->timestamp('end')->nullable();
             $table->string('status')->default('in_progress');
-            $table->text('briefing')->nullable();            
+            $table->text('briefing')->nullable();  
+            $table->boolean('handover_acknowledged')->default(false);          
             $table->foreignId('next_operator_id')->nullable()->constrained('users');
             $table->timestamps();
         });

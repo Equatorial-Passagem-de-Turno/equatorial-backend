@@ -15,18 +15,21 @@ class Shift extends Model
 
     protected $fillable = [
         'user_id',
-        'operation_desk_id', 
-        'role',              
+        'operation_desk_id',
+        'role',
         'start',
         'end',
         'status',
         'previous_shift_id',
-        'observations',
+        'briefing',
+        'handover_acknowledged',
+        'next_operator_id'
     ];
 
     protected $casts = [
         'start' => 'datetime',
         'end' => 'datetime',
+        'handover_acknowledged' => 'boolean',
         'status' => 'string',
     ];
 
