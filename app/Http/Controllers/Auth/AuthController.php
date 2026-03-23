@@ -48,7 +48,9 @@ class AuthController extends Controller
                 'role' => $activeShift->role,
                 'desk' => [
                     'id' => (string) $activeShift->operation_desk_id,
-                    'nome' => $activeShift->desk ? $activeShift->desk->name : 'Mesa Operacional'
+                    'name' => $activeShift->desk ? $activeShift->desk->name : 'Mesa Operacional',
+                    'nome' => $activeShift->desk ? $activeShift->desk->name : 'Mesa Operacional',
+                    'code' => $activeShift->desk ? $activeShift->desk->code : null,
                 ]
             ];
         }

@@ -4,14 +4,124 @@ namespace App\Http\Controllers;
 
 use App\Application\Services\Shift\StartShiftService;
 use App\Application\Services\Shift\FinishShiftService;
+use App\Models\Shift;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Mail;
 use DomainException;
 use Exception;
 use Carbon\Carbon;
 
 class ShiftController extends Controller
 {
+    public function reopen(Request $request): JsonResponse
+    {
+        $shift = Shift::query()
+            ->where('user_id', $request->user()->id)
+            ->where('status', 'finished')
+            ->orderByDesc('end')
+            ->first();
+
+        if (!$shift) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nenhum turno finalizado disponível para reabertura.',
+            ], 404);
+        }
+
+        if (Shift::query()->where('user_id', $request->user()->id)->where('status', 'in_progress')->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Já existe um turno em andamento para este operador.',
+            ], 400);
+        }
+
+        $shift->status = 'in_progress';
+        $shift->end = null;
+        $shift->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Turno reaberto com sucesso.',
+            'data' => [
+                'id' => $shift->id,
+                'status' => $shift->status,
+                'start' => optional($shift->start)->format('Y-m-d H:i:s'),
+            ],
+        ]);
+    }
+
+    public function sendFinishEmail(Request $request, Shift $shift): JsonResponse
+    {
+        $request->validate([
+            'recipientIds' => 'required|array|min:1',
+            'recipientIds.*' => 'integer|exists:users,id',
+            'summary' => 'nullable|array',
+            'summary.resolvedCount' => 'nullable|integer',
+            'summary.handoverCount' => 'nullable|integer',
+            'summary.briefing' => 'nullable|string',
+        ]);
+
+        if ((int) $shift->user_id !== (int) $request->user()->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Você não tem permissão para notificar este turno.',
+            ], 403);
+        }
+
+        if ($shift->status !== 'finished') {
+            return response()->json([
+                'success' => false,
+                'message' => 'O turno precisa estar encerrado para envio de notificação.',
+            ], 400);
+        }
+
+        $recipients = User::query()
+            ->whereIn('id', $request->input('recipientIds', []))
+            ->where('active', true)
+            ->get(['id', 'name', 'email']);
+
+        if ($recipients->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nenhum destinatário válido encontrado.',
+            ], 400);
+        }
+
+        $resolvedCount = (int) data_get($request->input('summary', []), 'resolvedCount', 0);
+        $handoverCount = (int) data_get($request->input('summary', []), 'handoverCount', 0);
+        $briefing = (string) data_get($request->input('summary', []), 'briefing', '');
+
+        $operatorName = $request->user()->name;
+        $shiftId = $shift->id;
+        $startedAt = optional($shift->start)?->format('d/m/Y H:i') ?? '--';
+        $endedAt = optional($shift->end)?->format('d/m/Y H:i') ?? '--';
+
+        foreach ($recipients as $recipient) {
+            Mail::raw(
+                "Encerramento de turno\n\n" .
+                "Operador: {$operatorName}\n" .
+                "Turno ID: {$shiftId}\n" .
+                "Início: {$startedAt}\n" .
+                "Fim: {$endedAt}\n" .
+                "Pendências resolvidas: {$resolvedCount}\n" .
+                "Pendências repassadas: {$handoverCount}\n\n" .
+                "Briefing final:\n{$briefing}",
+                function ($message) use ($recipient, $shiftId) {
+                    $message->to($recipient->email, $recipient->name)
+                        ->subject("Turno {$shiftId} encerrado");
+                }
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Notificação enviada com sucesso.',
+            'sent' => $recipients->count(),
+        ]);
+    }
+
     public function start(Request $request, StartShiftService $service): JsonResponse
     {
         $request->validate([
@@ -34,6 +144,8 @@ class ShiftController extends Controller
                 'desk' => [
                     'id' => $shift->desk->id,
                     'name' => $shift->desk->name,
+                    'code' => $shift->desk->code,
+                    'location' => $shift->desk->location,
                 ]
             ], 201);
 

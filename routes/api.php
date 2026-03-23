@@ -5,6 +5,7 @@ use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\OccurrenceController;
 use App\Http\Controllers\OperationDeskController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -18,11 +19,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/roles', [RoleController::class, 'index']);
     Route::get('/operation-desks', [OperationDeskController::class, 'index']);
+    Route::get('/users', [UserController::class, 'index']);
 
     // Shift routes
     Route::prefix('shifts')->group(function () {
         Route::post('/start', [ShiftController::class, 'start']);
         Route::post('/finish', [ShiftController::class, 'finish']);
+        Route::post('/reopen', [ShiftController::class, 'reopen']);
+        Route::post('/{shift}/notify', [ShiftController::class, 'sendFinishEmail']);
         Route::get('/current', [ShiftController::class, 'getCurrentShift']);
         Route::get('/handover/previous', [ShiftController::class, 'getPreviousShift']);
         Route::get('/previous-details', [ShiftController::class, 'getPreviousShiftDetails']);
