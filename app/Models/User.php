@@ -25,6 +25,7 @@ class User extends Authenticatable
         'role',
         'active',
         'voltage_level',
+        'operation_desk_id',
     ];
 
     /**
@@ -53,5 +54,10 @@ class User extends Authenticatable
     public function shifts()
     {
         return $this->hasMany(Shift::class);
+    }
+
+    public function operationDesk()
+    {
+        return $this->belongsTo(OperationDesk::class);
     }
 }

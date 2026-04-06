@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\OperationDesk;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -19,6 +20,7 @@ class UserSeeder extends Seeder
                 'email' => 'teste@teste.com',
                 'role' => 'operador',
                 'voltage_level' => 'BT',
+                'operation_desk_name' => 'MCZ I',
                 'active' => true,
             ],
             [
@@ -26,6 +28,7 @@ class UserSeeder extends Seeder
                 'email' => 'carlos.oliveira@eqdemo.local',
                 'role' => 'operador',
                 'voltage_level' => 'MT',
+                'operation_desk_name' => 'MCZ II',
                 'active' => true,
             ],
             [
@@ -33,6 +36,7 @@ class UserSeeder extends Seeder
                 'email' => 'fernanda.souza@eqdemo.local',
                 'role' => 'operador',
                 'voltage_level' => 'AT',
+                'operation_desk_name' => 'DMG / SDI',
                 'active' => true,
             ],
             [
@@ -40,6 +44,7 @@ class UserSeeder extends Seeder
                 'email' => 'ricardo.mendes@eqdemo.local',
                 'role' => 'supervisor',
                 'voltage_level' => 'MT',
+                'operation_desk_name' => 'RLU / SMC',
                 'active' => true,
             ],
             [
@@ -47,11 +52,17 @@ class UserSeeder extends Seeder
                 'email' => 'patricia.lima@eqdemo.local',
                 'role' => 'supervisor',
                 'voltage_level' => 'BT',
+                'operation_desk_name' => 'OUTRAS',
                 'active' => true,
             ],
         ];
 
         foreach ($users as $data) {
+            $deskId = OperationDesk::query()
+                ->where('is_active', true)
+                ->where('name', $data['operation_desk_name'])
+                ->value('id');
+
             User::updateOrCreate(
                 ['email' => $data['email']],
                 [
@@ -59,6 +70,7 @@ class UserSeeder extends Seeder
                     'password' => Hash::make('password'),
                     'role' => $data['role'],
                     'voltage_level' => $data['voltage_level'],
+                    'operation_desk_id' => $deskId,
                     'active' => $data['active'],
                 ]
             );

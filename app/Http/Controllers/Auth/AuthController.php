@@ -39,7 +39,7 @@ class AuthController extends Controller
         // VERIFICAÇÃO DO TURNO ATIVO 
         $activeShift = Shift::with('desk')
             ->where('user_id', $user->id)
-            ->whereNull('end')
+            ->where('status', 'in_progress')
             ->first();
 
         $activeShiftData = null;

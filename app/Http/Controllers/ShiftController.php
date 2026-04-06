@@ -15,6 +15,69 @@ use Carbon\Carbon;
 
 class ShiftController extends Controller
 {
+    private function isClosedOccurrenceStatus(?string $status): bool
+    {
+        $normalized = strtolower(trim((string) $status));
+        return in_array($normalized, ['resolved', 'finished', 'resolvida', 'finalizada', 'cancelada', 'fechada', 'encerrada', 'closed', 'cancelled', 'canceled'], true);
+    }
+
+    private function normalizeOperatorProfile(?string $role, ?string $voltage): string
+    {
+        $roleValue = (string) $role;
+        if (preg_match('/\(([^)]+)\)/', $roleValue, $matches) === 1) {
+            return strtoupper(trim($matches[1]));
+        }
+
+        $voltageValue = strtoupper(trim((string) $voltage));
+        if ($voltageValue !== '') {
+            return $voltageValue;
+        }
+
+        return 'BT';
+    }
+
+    public function getActiveOperatorsSummary(Request $request): JsonResponse
+    {
+        $activeShifts = Shift::query()
+            ->with([
+                'user:id,name,email,role,voltage_level,active',
+                'desk:id,code,name',
+                'occurrences:id,shift_id,status,created_at',
+            ])
+            ->where('status', 'in_progress')
+            ->orderByDesc('start')
+            ->get();
+
+        $rows = $activeShifts
+            ->filter(fn (Shift $shift) => $shift->user && $shift->user->active && strtolower((string) $shift->user->role) === 'operador')
+            ->map(function (Shift $shift) {
+                $all = $shift->occurrences ?? collect();
+
+                $resolved = $all->filter(fn ($occ) => $this->isClosedOccurrenceStatus((string) $occ->status))->count();
+
+                $open = $all->filter(fn ($occ) => !$this->isClosedOccurrenceStatus((string) $occ->status));
+                $inherited = $open->filter(fn ($occ) => $shift->start && $occ->created_at && $occ->created_at->lt($shift->start))->count();
+                $created = $open->filter(fn ($occ) => !$shift->start || !$occ->created_at || $occ->created_at->gte($shift->start))->count();
+
+                return [
+                    'id' => (string) $shift->user->id,
+                    'name' => $shift->user->name,
+                    'email' => $shift->user->email,
+                    'profile' => $this->normalizeOperatorProfile($shift->role, $shift->user->voltage_level),
+                    'table' => $shift->desk?->name ?? 'N/A',
+                    'table_code' => $shift->desk?->code,
+                    'status' => 'Ativo',
+                    'inherited_occurrences' => $inherited,
+                    'created_occurrences' => $created,
+                    'resolved_occurrences' => $resolved,
+                    'assumed_occurrences' => $inherited + $created + $resolved,
+                ];
+            })
+            ->values();
+
+        return response()->json($rows);
+    }
+
     public function reopen(Request $request): JsonResponse
     {
         $shift = Shift::query()
@@ -193,7 +256,7 @@ class ShiftController extends Controller
     public function getCurrentShift(Request $request): JsonResponse
     {
         $shift = \App\Models\Shift::with(['desk', 'occurrences' => function($query) {
-            $query->where('status', '!=', 'resolved');
+            $query->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled']);
         }])
         ->where('user_id', $request->user()->id)
         ->where('status', 'in_progress')
@@ -244,15 +307,11 @@ class ShiftController extends Controller
             return response()->json(['occurrences' => []], 200);
         }
 
-        if (!$currentShift) {
-            return response()->json(['message' => 'Nenhum turno ativo'], 404);
-        }
-
         $pendingOccurrences = \App\Models\Occurrence::with(['shift.user'])
             ->whereHas('shift', function ($query) use ($currentShift) {
                 $query->where('operation_desk_id', $currentShift->operation_desk_id);
             })
-            ->whereNotIn('status', ['resolved', 'finished', 'Resolvida', 'Finalizada'])
+            ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
             ->where('created_at', '<', $currentShift->start)
             ->get();
 
@@ -317,6 +376,29 @@ class ShiftController extends Controller
         });
 
         return response()->json($mappedShifts);
+    }
+
+    public function getShiftsByUser(Request $request, int $userId): JsonResponse
+    {
+        $days = (int) $request->query('days', 30);
+        $days = max(1, min($days, 120));
+
+        $shifts = \App\Models\Shift::query()
+            ->where('user_id', $userId)
+            ->where('start', '>=', now()->subDays($days))
+            ->orderByDesc('start')
+            ->get();
+
+        $mapped = $shifts->map(function ($shift) {
+            return [
+                'id' => 'TUR-' . str_pad((string) $shift->id, 4, '0', STR_PAD_LEFT),
+                'date' => $shift->start ? $shift->start->format('d/m/Y') : '--/--/----',
+                'time' => ($shift->start ? $shift->start->format('H:i') : '--:--') . ' - ' . ($shift->end ? $shift->end->format('H:i') : '...'),
+                'status' => $shift->status,
+            ];
+        })->values();
+
+        return response()->json($mapped);
     }
 
     public function getPreviousShiftDetails(Request $request)

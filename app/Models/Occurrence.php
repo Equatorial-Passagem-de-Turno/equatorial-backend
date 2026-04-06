@@ -28,12 +28,14 @@ class Occurrence extends Model
         'link_value',
         'attachments',
         'comments',
+        'reminders',
     ];
 
     protected $casts = [
         'location' => 'array',
         'attachments' => 'array',
         'comments' => 'array',
+        'reminders' => 'array',
     ];
 
     protected function priority(): Attribute

@@ -19,7 +19,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/roles', [RoleController::class, 'index']);
     Route::get('/operation-desks', [OperationDeskController::class, 'index']);
+    Route::post('/operation-desks', [OperationDeskController::class, 'store']);
+    Route::put('/operation-desks/{id}', [OperationDeskController::class, 'update']);
+    Route::delete('/operation-desks/{id}', [OperationDeskController::class, 'destroy']);
     Route::get('/users', [UserController::class, 'index']);
+    Route::post('/users', [UserController::class, 'store']);
+    Route::put('/users/{id}', [UserController::class, 'update']);
+    Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
     // Shift routes
     Route::prefix('shifts')->group(function () {
@@ -27,10 +33,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/finish', [ShiftController::class, 'finish']);
         Route::post('/reopen', [ShiftController::class, 'reopen']);
         Route::post('/{shift}/notify', [ShiftController::class, 'sendFinishEmail']);
+        Route::get('/operators/active', [ShiftController::class, 'getActiveOperatorsSummary']);
         Route::get('/current', [ShiftController::class, 'getCurrentShift']);
         Route::get('/handover/previous', [ShiftController::class, 'getPreviousShift']);
         Route::get('/previous-details', [ShiftController::class, 'getPreviousShiftDetails']);
         Route::get('/by-date', [ShiftController::class, 'getShiftsByDate']);
+        Route::get('/by-user/{userId}', [ShiftController::class, 'getShiftsByUser']);
     });
 
     // Occurrence routes

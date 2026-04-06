@@ -10,10 +10,63 @@ use Exception;
 
 class OccurrenceController extends Controller
 {
+    private array $closedStatuses = ['resolved', 'finished', 'resolvida', 'finalizada', 'cancelada', 'fechada', 'encerrada', 'closed', 'cancelled', 'canceled'];
+
     private function isClosedStatus(string $status): bool
     {
         $normalized = strtolower(trim($status));
-        return in_array($normalized, ['resolved', 'finished', 'resolvida', 'finalizada', 'cancelada', 'fechada', 'encerrada'], true);
+        return in_array($normalized, $this->closedStatuses, true);
+    }
+
+    private function normalizeOccurrencePayload(array $source): array
+    {
+        $payload = [];
+
+        if (array_key_exists('title', $source)) {
+            $payload['title'] = $source['title'];
+        }
+
+        if (array_key_exists('category', $source)) {
+            $payload['category'] = $source['category'];
+        }
+
+        if (array_key_exists('priority', $source)) {
+            $payload['priority'] = $source['priority'];
+        }
+
+        if (array_key_exists('status', $source)) {
+            $payload['status'] = $source['status'];
+        }
+
+        if (array_key_exists('description', $source)) {
+            $payload['description'] = $source['description'];
+        }
+
+        if (array_key_exists('location', $source)) {
+            $payload['location'] = $source['location'];
+        }
+
+        if (array_key_exists('attachments', $source)) {
+            $payload['attachments'] = $source['attachments'];
+        }
+
+        if (array_key_exists('comments', $source)) {
+            $payload['comments'] = $source['comments'];
+        }
+
+        if (array_key_exists('reminders', $source)) {
+            $payload['reminders'] = $source['reminders'];
+        }
+
+        if (array_key_exists('link_type', $source) || array_key_exists('linkType', $source)) {
+            $payload['link_type'] = $source['link_type'] ?? $source['linkType'];
+        }
+
+        if (array_key_exists('link_value', $source) || array_key_exists('linkValue', $source)) {
+            $payload['link_value'] = $source['link_value'] ?? $source['linkValue'];
+        }
+
+        return $payload;
     }
 
     private function mapOccurrenceForFrontend(Occurrence $occurrence, ?Shift $currentShift = null): array
@@ -42,6 +95,7 @@ class OccurrenceController extends Controller
             'linkValue' => $occurrence->link_value,
             'attachments' => $occurrence->attachments,
             'comments' => $occurrence->comments,
+            'reminders' => $occurrence->reminders,
             'created_at' => $createdAt?->toISOString(),
             'updated_at' => $occurrence->updated_at?->toISOString(),
             'createdAt' => $createdAt ? $createdAt->format('d/m/Y H:i') : null,
@@ -58,25 +112,34 @@ class OccurrenceController extends Controller
             ->where('status', 'in_progress')
             ->first();
 
-        if (!$currentShift) {
+        $isSupervisor = strtolower((string) $request->user()->role) === 'supervisor';
+
+        if (!$currentShift && !$isSupervisor) {
             return response()->json([]);
         }
 
-        $occurrences = \App\Models\Occurrence::with('shift')
-            ->whereHas('shift', function ($query) use ($currentShift) {
+        $occurrencesQuery = \App\Models\Occurrence::with(['shift', 'user']);
+
+        if ($currentShift) {
+            $occurrencesQuery->whereHas('shift', function ($query) use ($currentShift) {
                 $query->where('operation_desk_id', $currentShift->operation_desk_id);
-            })
+            });
+        }
+
+        if ($isSupervisor && !$currentShift) {
+            $occurrencesQuery->where('created_at', '>=', now()->subDays(30));
+        }
+
+        $occurrences = $occurrencesQuery
             ->where(function($query) {
-                // Condição 1: Pega TUDO que NÃO está finalizado (nunca perde uma pendência)
-                $query->whereNotIn('status', ['resolved', 'finished', 'resolvida', 'finalizada', 'Resolvida', 'Finalizada'])
-                      // Condição 2: OU pega o que está finalizado, mas com limite de 15 dias para não travar a tela
+                $query->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
                       ->orWhere('created_at', '>=', now()->subDays(15));
             })
             ->orderBy('created_at', 'desc')
             ->get();
 
         $filteredOccurrences = $occurrences->filter(function ($occ) {
-            $isClosed = in_array(strtolower($occ->status), ['resolved', 'finished', 'resolvida', 'finalizada']);
+            $isClosed = $this->isClosedStatus((string) $occ->status);
             
             if ($isClosed && $occ->shift && $occ->shift->end) {
                 if ($occ->updated_at > $occ->shift->end) {
@@ -96,6 +159,22 @@ class OccurrenceController extends Controller
     public function store(Request $request)
     {
         try {
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'category' => 'required|string|max:255',
+                'priority' => 'required|string|max:50',
+                'status' => 'required|string|max:50',
+                'description' => 'required|string',
+                'location' => 'nullable|array',
+                'linkType' => 'nullable|string|max:50',
+                'link_type' => 'nullable|string|max:50',
+                'linkValue' => 'nullable|string|max:255',
+                'link_value' => 'nullable|string|max:255',
+                'attachments' => 'nullable|array',
+                'comments' => 'nullable|array',
+                'reminders' => 'nullable|array',
+            ]);
+
             $currentShift = Shift::where('user_id', $request->user()->id)
                 ->where('status', 'in_progress')
                 ->first();
@@ -104,7 +183,9 @@ class OccurrenceController extends Controller
 
             $shiftInfo = $currentShift ? " no turno " . $currentShift->id : "";
             
-            $comments = $request->comments ?? [];
+            $normalizedPayload = $this->normalizeOccurrencePayload($validated);
+
+            $comments = $normalizedPayload['comments'] ?? [];
             $comments[] = [
                 'id' => 'sys-' . uniqid(),
                 'author' => 'Sistema',
@@ -117,16 +198,17 @@ class OccurrenceController extends Controller
                 'id' => $occurrenceId,
                 'user_id' => $request->user()->id,
                 'shift_id' => $currentShift ? $currentShift->id : null,
-                'title' => $request->title,
-                'category' => $request->category,
-                'priority' => $request->priority,
-                'status' => $request->status,
-                'description' => $request->description,
-                'location' => $request->location,
-                'link_type' => $request->linkType,
-                'link_value' => $request->linkValue,
-                'attachments' => $request->attachments,
+                'title' => $normalizedPayload['title'],
+                'category' => $normalizedPayload['category'],
+                'priority' => $normalizedPayload['priority'],
+                'status' => $normalizedPayload['status'],
+                'description' => $normalizedPayload['description'],
+                'location' => $normalizedPayload['location'] ?? null,
+                'link_type' => $normalizedPayload['link_type'] ?? null,
+                'link_value' => $normalizedPayload['link_value'] ?? null,
+                'attachments' => $normalizedPayload['attachments'] ?? null,
                 'comments' => $comments,
+                'reminders' => $normalizedPayload['reminders'] ?? null,
             ]);
 
             $occurrence->load('user');
@@ -151,8 +233,29 @@ class OccurrenceController extends Controller
     public function update(Request $request, $id): JsonResponse
     {
         try {
+            $validated = $request->validate([
+                'title' => 'sometimes|string|max:255',
+                'category' => 'sometimes|string|max:255',
+                'priority' => 'sometimes|string|max:50',
+                'status' => 'sometimes|string|max:50',
+                'description' => 'sometimes|string',
+                'location' => 'sometimes|nullable|array',
+                'linkType' => 'sometimes|nullable|string|max:50',
+                'link_type' => 'sometimes|nullable|string|max:50',
+                'linkValue' => 'sometimes|nullable|string|max:255',
+                'link_value' => 'sometimes|nullable|string|max:255',
+                'attachments' => 'sometimes|nullable|array',
+                'comments' => 'sometimes|nullable|array',
+                'reminders' => 'sometimes|nullable|array',
+            ]);
+
             $occurrence = Occurrence::with(['user', 'shift'])->findOrFail($id);
-            $occurrence->update($request->all());
+            $payload = $this->normalizeOccurrencePayload($validated);
+
+            if (!empty($payload)) {
+                $occurrence->update($payload);
+            }
+
             $occurrence->refresh();
             $occurrence->load(['user', 'shift']);
 
@@ -176,6 +279,20 @@ class OccurrenceController extends Controller
     public function bulkStore(Request $request): JsonResponse
     {
         try {
+            $request->validate([
+                'occurrences' => 'required|array|min:1',
+                'occurrences.*.title' => 'required|string|max:255',
+                'occurrences.*.category' => 'nullable|string|max:255',
+                'occurrences.*.priority' => 'nullable|string|max:50',
+                'occurrences.*.status' => 'nullable|string|max:50',
+                'occurrences.*.description' => 'nullable|string',
+                'occurrences.*.location' => 'nullable|array',
+                'occurrences.*.comments' => 'nullable|array',
+                'occurrences.*.reminders' => 'nullable|array',
+                'occurrences.*.linkType' => 'nullable|string|max:50',
+                'occurrences.*.linkValue' => 'nullable|string|max:255',
+            ]);
+
             $occurrences = $request->input('occurrences');
             $userId = $request->user()->id;
 
@@ -183,9 +300,14 @@ class OccurrenceController extends Controller
                                 ->where('status', 'in_progress')
                                 ->first();
 
-            if ($currentShift) {
-                $currentShift->update(['handover_acknowledged' => true]);
+            if (!$currentShift) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'É necessário ter um turno em andamento para assumir pendências.',
+                ], 400);
             }
+
+            $currentShift->update(['handover_acknowledged' => true]);
 
             $createdOccurrences = [];
 
@@ -213,26 +335,25 @@ class OccurrenceController extends Controller
                 $newOcc = Occurrence::create([
                     'id' => $newId,
                     'user_id' => $userId,
-                    'shift_id' => $currentShift ? $currentShift->id : null,
+                    'shift_id' => $currentShift->id,
                     'title' => $data['title'] ?? 'Sem Título',
                     'category' => $data['category'] ?? 'Herdada de Turno',
                     'priority' => $data['priority'] ?? 'medium',
                     'status' => $data['status'] ?? 'open',
                     'description' => $data['description'] ?? '', 
                     'location' => $data['location'] ?? null,
-                    'link_type' => $data['linkType'] ?? null,
-                    'link_value' => $data['linkValue'] ?? null,
+                    'link_type' => $data['linkType'] ?? ($data['link_type'] ?? null),
+                    'link_value' => $data['linkValue'] ?? ($data['link_value'] ?? null),
                     'comments' => $commentsHist,
+                    'reminders' => $data['reminders'] ?? null,
                 ]);
 
                 $newOcc->load('user');
                 $createdOccurrences[] = $this->mapOccurrenceForFrontend($newOcc, $currentShift);
 
-                if ($currentShift) {
-                    \Illuminate\Support\Facades\DB::table('occurrences')
-                        ->where('id', $newId)
-                        ->update(['created_at' => (clone $currentShift->start)->subMinutes(5)]);
-                }
+                \Illuminate\Support\Facades\DB::table('occurrences')
+                    ->where('id', $newId)
+                    ->update(['created_at' => (clone $currentShift->start)->subMinutes(5)]);
 
                 if ($oldId) {
                     Occurrence::where('id', $oldId)->update(['status' => 'resolved']);
