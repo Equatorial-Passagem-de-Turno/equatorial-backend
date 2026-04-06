@@ -73,6 +73,7 @@ class OccurrenceController extends Controller
     {
         $createdAt = $occurrence->created_at;
         $isInherited = false;
+        $deskName = $occurrence->shift?->desk?->name;
 
         if ($currentShift && $createdAt) {
             $isInherited = $createdAt->lt($currentShift->start);
@@ -89,6 +90,8 @@ class OccurrenceController extends Controller
             'status' => $occurrence->status,
             'description' => $occurrence->description,
             'location' => $occurrence->location,
+            'operation_desk_name' => $deskName,
+            'table' => $deskName,
             'link_type' => $occurrence->link_type,
             'linkType' => $occurrence->link_type,
             'link_value' => $occurrence->link_value,
@@ -118,7 +121,7 @@ class OccurrenceController extends Controller
             return response()->json([]);
         }
 
-        $occurrencesQuery = \App\Models\Occurrence::with(['shift', 'user']);
+        $occurrencesQuery = \App\Models\Occurrence::with(['shift.desk', 'user']);
 
         if ($currentShift) {
             $occurrencesQuery->whereHas('shift', function ($query) use ($currentShift) {
@@ -211,7 +214,7 @@ class OccurrenceController extends Controller
                 'reminders' => $normalizedPayload['reminders'] ?? null,
             ]);
 
-            $occurrence->load('user');
+            $occurrence->load(['user', 'shift.desk']);
 
             return response()->json([
                 'success' => true,
@@ -226,7 +229,7 @@ class OccurrenceController extends Controller
 
     public function show($id): JsonResponse
     {
-        $occurrence = Occurrence::with(['user', 'shift'])->findOrFail($id);
+        $occurrence = Occurrence::with(['user', 'shift.desk'])->findOrFail($id);
         return response()->json($this->mapOccurrenceForFrontend($occurrence, $occurrence->shift));
     }
 
@@ -249,7 +252,7 @@ class OccurrenceController extends Controller
                 'reminders' => 'sometimes|nullable|array',
             ]);
 
-            $occurrence = Occurrence::with(['user', 'shift'])->findOrFail($id);
+            $occurrence = Occurrence::with(['user', 'shift.desk'])->findOrFail($id);
             $payload = $this->normalizeOccurrencePayload($validated);
 
             if (!empty($payload)) {
@@ -257,7 +260,7 @@ class OccurrenceController extends Controller
             }
 
             $occurrence->refresh();
-            $occurrence->load(['user', 'shift']);
+            $occurrence->load(['user', 'shift.desk']);
 
             return response()->json([
                 'success' => true,
@@ -348,7 +351,7 @@ class OccurrenceController extends Controller
                     'reminders' => $data['reminders'] ?? null,
                 ]);
 
-                $newOcc->load('user');
+                $newOcc->load(['user', 'shift.desk']);
                 $createdOccurrences[] = $this->mapOccurrenceForFrontend($newOcc, $currentShift);
 
                 \Illuminate\Support\Facades\DB::table('occurrences')
