@@ -19,8 +19,8 @@ class DatabaseSeeder extends Seeder
             OperationDeskSeeder::class,
             UserSeeder::class,
             RoleSeeder::class,
-            ShiftSeeder::class,
-            OccurrenceSeeder::class,
+            // ShiftSeeder::class,
+            // OccurrenceSeeder::class,
         ]);
     }
 }

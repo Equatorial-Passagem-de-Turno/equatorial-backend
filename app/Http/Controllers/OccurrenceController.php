@@ -121,7 +121,32 @@ class OccurrenceController extends Controller
             return response()->json([]);
         }
 
-        $occurrencesQuery = \App\Models\Occurrence::with(['shift.desk', 'user']);
+        $maxItems = $isSupervisor ? 1200 : 800;
+
+        $occurrencesQuery = \App\Models\Occurrence::query()
+            ->select([
+                'id',
+                'user_id',
+                'shift_id',
+                'title',
+                'category',
+                'priority',
+                'status',
+                'description',
+                'location',
+                'link_type',
+                'link_value',
+                'attachments',
+                'comments',
+                'reminders',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'shift:id,operation_desk_id,end',
+                'shift.desk:id,name',
+                'user:id,name',
+            ]);
 
         if ($currentShift) {
             $occurrencesQuery->whereHas('shift', function ($query) use ($currentShift) {
@@ -138,7 +163,10 @@ class OccurrenceController extends Controller
                 $query->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
                       ->orWhere('created_at', '>=', now()->subDays(15));
             })
-            ->orderBy('created_at', 'desc')
+            // Avoid heavy DB sorting by datetime on large datasets.
+            // IDs are unique and prefixed by period, good enough for recent-first listing here.
+            ->orderByDesc('id')
+            ->limit($maxItems)
             ->get();
 
         $filteredOccurrences = $occurrences->filter(function ($occ) {
