@@ -14,7 +14,7 @@ class ShiftSeeder extends Seeder
     public function run(): void
     {
         $testUser = User::where('email', 'teste@teste.com')->first();
-        $previousOperator = User::where('email', 'carlos.oliveira@eqdemo.local')->first();
+        $previousOperator = User::where('email', 'carlos.oliveira@eqcontinuum.local')->first();
         $desk = OperationDesk::where('code', 'MESA-01')->first() ?? OperationDesk::first();
 
         if (!$testUser || !$previousOperator || !$desk) {
@@ -51,7 +51,7 @@ class ShiftSeeder extends Seeder
         ]);
 
         Shift::create([
-            'user_id' => User::where('email', 'fernanda.souza@eqdemo.local')->value('id') ?? $previousOperator->id,
+            'user_id' => User::where('email', 'fernanda.souza@eqcontinuum.local')->value('id') ?? $previousOperator->id,
             'operation_desk_id' => $desk->id,
             'role' => 'Média Tensão (MT)',
             'start' => $now->copy()->subDay()->setTime(8, 0),

@@ -25,7 +25,7 @@ class UserSeeder extends Seeder
             ],
             [
                 'name' => 'Carlos Oliveira',
-                'email' => 'carlos.oliveira@eqdemo.local',
+                'email' => 'carlos.oliveira@eqcontinuum.local',
                 'role' => 'operador',
                 'voltage_level' => 'MT',
                 'operation_desk_name' => 'MCZ II',
@@ -33,7 +33,7 @@ class UserSeeder extends Seeder
             ],
             [
                 'name' => 'Fernanda Souza',
-                'email' => 'fernanda.souza@eqdemo.local',
+                'email' => 'fernanda.souza@eqcontinuum.local',
                 'role' => 'operador',
                 'voltage_level' => 'AT',
                 'operation_desk_name' => 'DMG / SDI',
@@ -41,7 +41,7 @@ class UserSeeder extends Seeder
             ],
             [
                 'name' => 'Ricardo Mendes',
-                'email' => 'ricardo.mendes@eqdemo.local',
+                'email' => 'ricardo.mendes@eqcontinuum.local',
                 'role' => 'supervisor',
                 'voltage_level' => 'MT',
                 'operation_desk_name' => 'RLU / SMC',
@@ -49,7 +49,7 @@ class UserSeeder extends Seeder
             ],
             [
                 'name' => 'Patricia Lima',
-                'email' => 'patricia.lima@eqdemo.local',
+                'email' => 'patricia.lima@eqcontinuum.local',
                 'role' => 'supervisor',
                 'voltage_level' => 'BT',
                 'operation_desk_name' => 'OUTRAS',

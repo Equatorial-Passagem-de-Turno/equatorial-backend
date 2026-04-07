@@ -33,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/finish', [ShiftController::class, 'finish']);
         Route::post('/reopen', [ShiftController::class, 'reopen']);
         Route::post('/{shift}/notify', [ShiftController::class, 'sendFinishEmail']);
+        Route::get('/{shift}', [ShiftController::class, 'show'])->whereNumber('shift');
         Route::get('/operators/active', [ShiftController::class, 'getActiveOperatorsSummary']);
         Route::get('/current', [ShiftController::class, 'getCurrentShift']);
         Route::get('/handover/previous', [ShiftController::class, 'getPreviousShift']);

@@ -115,7 +115,8 @@ class OccurrenceController extends Controller
             ->where('status', 'in_progress')
             ->first();
 
-        $isSupervisor = strtolower((string) $request->user()->role) === 'supervisor';
+        $accountRole = strtolower((string) $request->user()->role);
+        $isSupervisor = in_array($accountRole, ['supervisor', 'admin', 'adm'], true);
 
         if (!$currentShift && !$isSupervisor) {
             return response()->json([]);
@@ -204,31 +205,115 @@ class OccurrenceController extends Controller
                 'attachments' => 'nullable|array',
                 'comments' => 'nullable|array',
                 'reminders' => 'nullable|array',
+                'assigned_operator_id' => 'nullable|integer|exists:users,id',
+                'assigned_operation_desk_id' => 'nullable|integer|exists:operation_desks,id',
             ]);
+
+            $accountRole = strtolower((string) $request->user()->role);
+            $isSupervisor = in_array($accountRole, ['supervisor', 'admin', 'adm'], true);
 
             $currentShift = Shift::where('user_id', $request->user()->id)
                 ->where('status', 'in_progress')
                 ->first();
 
-            $occurrenceId = $request->id ?? 'OC-' . date('Ym') . '-' . rand(1000, 9999);
+            $assignedOperatorId = $validated['assigned_operator_id'] ?? null;
+            $assignedDeskId = $validated['assigned_operation_desk_id'] ?? null;
+            $targetShift = $currentShift;
 
-            $shiftInfo = $currentShift ? " no turno " . $currentShift->id : "";
+            if ($isSupervisor) {
+                if (!$assignedOperatorId && !$assignedDeskId) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Selecione um operador ou uma mesa para direcionar a ocorrência.',
+                    ], 422);
+                }
+
+                if ($assignedOperatorId && $assignedDeskId) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Selecione apenas um destino: operador ou mesa.',
+                    ], 422);
+                }
+
+                if ($assignedOperatorId) {
+                    $targetShift = Shift::query()
+                        ->with(['desk:id,name', 'user:id,name'])
+                        ->where('user_id', $assignedOperatorId)
+                        ->where('status', 'in_progress')
+                        ->orderByDesc('start')
+                        ->first();
+
+                    if (!$targetShift) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'O operador selecionado não possui turno em andamento para receber a ocorrência.',
+                        ], 422);
+                    }
+                }
+
+                if ($assignedDeskId) {
+                    $targetShift = Shift::query()
+                        ->with(['desk:id,name', 'user:id,name'])
+                        ->where('operation_desk_id', $assignedDeskId)
+                        ->where('status', 'in_progress')
+                        ->orderByDesc('start')
+                        ->first();
+
+                    if (!$targetShift) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'A mesa selecionada não possui turno em andamento para receber a ocorrência.',
+                        ], 422);
+                    }
+                }
+            }
+
+            $occurrenceId = $request->id ?? 'OC-' . date('Ym') . '-' . rand(1000, 9999);
             
             $normalizedPayload = $this->normalizeOccurrencePayload($validated);
 
             $comments = $normalizedPayload['comments'] ?? [];
-            $comments[] = [
-                'id' => 'sys-' . uniqid(),
-                'author' => 'Sistema',
-                'text' => "Ocorrência criada pelo operador " . $request->user()->name . $shiftInfo,
-                'type' => 'Sistema',
-                'createdAt' => now()->toISOString()
-            ];
+
+            if ($isSupervisor) {
+                if ($assignedOperatorId) {
+                    $operatorName = $targetShift?->user?->name ?? 'Operador';
+                    $deskName = $targetShift?->desk?->name ?? 'Mesa';
+                    $comments[] = [
+                        'id' => 'sys-' . uniqid(),
+                        'author' => 'Sistema',
+                        'text' => "Ocorrência criada pelo supervisor {$request->user()->name} e direcionada para o operador {$operatorName} ({$deskName}).",
+                        'type' => 'Sistema',
+                        'createdAt' => now()->toISOString(),
+                    ];
+                } else {
+                    $deskName = $targetShift?->desk?->name ?? 'Mesa';
+                    $operatorName = $targetShift?->user?->name ?? 'Operador';
+                    $comments[] = [
+                        'id' => 'sys-' . uniqid(),
+                        'author' => 'Sistema',
+                        'text' => "Ocorrência criada pelo supervisor {$request->user()->name} e direcionada para a mesa {$deskName} (operador atual: {$operatorName}).",
+                        'type' => 'Sistema',
+                        'createdAt' => now()->toISOString(),
+                    ];
+                }
+            } else {
+                $shiftInfo = $currentShift ? " no turno " . $currentShift->id : "";
+                $comments[] = [
+                    'id' => 'sys-' . uniqid(),
+                    'author' => 'Sistema',
+                    'text' => "Ocorrência criada pelo operador " . $request->user()->name . $shiftInfo,
+                    'type' => 'Sistema',
+                    'createdAt' => now()->toISOString(),
+                ];
+            }
 
             $occurrence = Occurrence::create([
                 'id' => $occurrenceId,
-                'user_id' => $request->user()->id,
-                'shift_id' => $currentShift ? $currentShift->id : null,
+                'user_id' => $isSupervisor
+                    ? ($targetShift?->user_id ?? $assignedOperatorId)
+                    : $request->user()->id,
+                'shift_id' => $targetShift ? $targetShift->id : null,
+                'supervisor_id' => $isSupervisor ? $request->user()->id : null,
                 'title' => $normalizedPayload['title'],
                 'category' => $normalizedPayload['category'],
                 'priority' => $normalizedPayload['priority'],
@@ -247,7 +332,7 @@ class OccurrenceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Occurrence registered successfully.',
-                'data' => $this->mapOccurrenceForFrontend($occurrence, $currentShift)
+                'data' => $this->mapOccurrenceForFrontend($occurrence, $targetShift)
             ], 201);
 
         } catch (Exception $e) {

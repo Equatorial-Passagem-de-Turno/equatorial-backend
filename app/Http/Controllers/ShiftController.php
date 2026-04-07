@@ -15,10 +15,75 @@ use Carbon\Carbon;
 
 class ShiftController extends Controller
 {
+    private const BRAZILIA_TIMEZONE = 'America/Sao_Paulo';
+
+    private function formatInBrasilia(?Carbon $dateTime, string $format, ?string $fallback = null): ?string
+    {
+        if (!$dateTime) {
+            return $fallback;
+        }
+
+        return $dateTime->copy()->setTimezone(self::BRAZILIA_TIMEZONE)->format($format);
+    }
+
+    private function nowInBrasilia(string $format): string
+    {
+        return now()->setTimezone(self::BRAZILIA_TIMEZONE)->format($format);
+    }
+
+    private function formatWorkedDurationFromMinutes(int $minutes): string
+    {
+        $safeMinutes = max(0, $minutes);
+        $hours = intdiv($safeMinutes, 60);
+        $remainingMinutes = $safeMinutes % 60;
+
+        return sprintf('%dh %02dm', $hours, $remainingMinutes);
+    }
+
+    private function calculateWorkedMinutes(?Carbon $start, ?Carbon $end = null): int
+    {
+        if (!$start) {
+            return 0;
+        }
+
+        $effectiveEnd = $end ?: now();
+        if ($effectiveEnd->lt($start)) {
+            return 0;
+        }
+
+        return (int) $start->diffInMinutes($effectiveEnd);
+    }
+
+    private function getWorkedDurationPayload(Shift $shift): array
+    {
+        $workedMinutes = $this->calculateWorkedMinutes($shift->start, $shift->end);
+        $workedDuration = $this->formatWorkedDurationFromMinutes($workedMinutes);
+
+        return [
+            'tempo_trabalhado_minutos' => $workedMinutes,
+            'tempo_trabalhado' => $workedDuration,
+            'workedMinutes' => $workedMinutes,
+            'workedDuration' => $workedDuration,
+        ];
+    }
+
     private function isClosedOccurrenceStatus(?string $status): bool
     {
         $normalized = strtolower(trim((string) $status));
         return in_array($normalized, ['resolved', 'finished', 'resolvida', 'finalizada', 'cancelada', 'fechada', 'encerrada', 'closed', 'cancelled', 'canceled'], true);
+    }
+
+    private function formatShiftProfileLabel(?string $role, ?string $voltage): string
+    {
+        $profile = strtoupper(trim($this->normalizeOperatorProfile($role, $voltage)));
+
+        return match ($profile) {
+            'BT' => 'Baixa Tensão (BT)',
+            'MT' => 'Média Tensão (MT)',
+            'AT' => 'Alta Tensão (AT)',
+            'ENG. PRÉ-OP', 'ENG. PRE-OP', 'ENG. PRE OP' => 'Eng. Pré-Op',
+            default => $profile !== '' ? $profile : 'BT',
+        };
     }
 
     private function normalizeOperatorProfile(?string $role, ?string $voltage): string
@@ -64,6 +129,7 @@ class ShiftController extends Controller
                     'name' => $shift->user->name,
                     'email' => $shift->user->email,
                     'profile' => $this->normalizeOperatorProfile($shift->role, $shift->user->voltage_level),
+                    'table_id' => $shift->operation_desk_id ? (int) $shift->operation_desk_id : null,
                     'table' => $shift->desk?->name ?? 'N/A',
                     'table_code' => $shift->desk?->code,
                     'status' => 'Ativo',
@@ -110,7 +176,8 @@ class ShiftController extends Controller
             'data' => [
                 'id' => $shift->id,
                 'status' => $shift->status,
-                'start' => optional($shift->start)->format('Y-m-d H:i:s'),
+                'start' => $this->formatInBrasilia($shift->start, 'Y-m-d H:i:s'),
+                ...$this->getWorkedDurationPayload($shift),
             ],
         ]);
     }
@@ -158,8 +225,8 @@ class ShiftController extends Controller
 
         $operatorName = $request->user()->name;
         $shiftId = $shift->id;
-        $startedAt = optional($shift->start)?->format('d/m/Y H:i') ?? '--';
-        $endedAt = optional($shift->end)?->format('d/m/Y H:i') ?? '--';
+        $startedAt = $this->formatInBrasilia($shift->start, 'd/m/Y H:i', '--');
+        $endedAt = $this->formatInBrasilia($shift->end, 'd/m/Y H:i', '--');
 
         foreach ($recipients as $recipient) {
             Mail::raw(
@@ -202,14 +269,15 @@ class ShiftController extends Controller
             return response()->json([
                 'id' => $shift->id,
                 'status' => $shift->status,
-                'start' => $shift->start->format('Y-m-d H:i:s'),
+                'start' => $this->formatInBrasilia($shift->start, 'Y-m-d H:i:s'),
                 'role' => $shift->role,
                 'desk' => [
                     'id' => $shift->desk->id,
                     'name' => $shift->desk->name,
                     'code' => $shift->desk->code,
                     'location' => $shift->desk->location,
-                ]
+                ],
+                ...$this->getWorkedDurationPayload($shift),
             ], 201);
 
         } catch (Exception $e) {
@@ -241,7 +309,10 @@ class ShiftController extends Controller
                 'data' => [
                     'id' => $shift->id,
                     'status' => $shift->status,
-                    'end' => $shift->end ? $shift->end->format('Y-m-d H:i:s') : now()->format('Y-m-d H:i:s'),
+                    'end' => $shift->end
+                        ? $this->formatInBrasilia($shift->end, 'Y-m-d H:i:s')
+                        : $this->nowInBrasilia('Y-m-d H:i:s'),
+                    ...$this->getWorkedDurationPayload($shift),
                 ]
             ], 200);
 
@@ -289,11 +360,13 @@ class ShiftController extends Controller
             'id' => $shift->id,
             'operador' => $request->user()->name,
             'funcao' => $shift->role,
-            'inicio' => $shift->start ? $shift->start->format('H:i') : null,
-            'data' => $shift->start ? $shift->start->format('d/m/Y') : null,
+            'inicio' => $this->formatInBrasilia($shift->start, 'H:i'),
+            'data' => $this->formatInBrasilia($shift->start, 'd/m/Y'),
+            'start_utc' => $shift->start ? $shift->start->toISOString() : null,
             'briefing' => $shift->briefing ?? '',
             'pendenciasHerdadas' => $herdadas,
-            'pendenciasDeixadas' => $deixadas
+            'pendenciasDeixadas' => $deixadas,
+            ...$this->getWorkedDurationPayload($shift),
         ]);
     }
 
@@ -334,16 +407,18 @@ class ShiftController extends Controller
                 'category' => $occ->category ?? 'Geral',
                 'location' => $occ->location ?? 'Local não informado',
                 'reportedBy' => $occ->shift->user->name ?? 'Operador Anterior', 
-                'timestamp' => $occ->created_at ? $occ->created_at->format('H:i') : '--:--',
-                'createdAt' => $occ->created_at ? $occ->created_at->format('d/m/Y H:i') : '--',
+                'timestamp' => $this->formatInBrasilia($occ->created_at, 'H:i', '--:--'),
+                'createdAt' => $this->formatInBrasilia($occ->created_at, 'd/m/Y H:i', '--'),
                 'linkType' => $occ->link_type ?? null,
                 'linkValue' => $occ->link_value ?? null,
             ];
         });
 
-        $startFormat = $lastShift && $lastShift->start ? $lastShift->start->format('H:i') : '--:--';
-        $endFormat = $lastShift && $lastShift->end ? $lastShift->end->format('H:i') : '--:--';
-        $dateFormat = $lastShift && $lastShift->start ? $lastShift->start->format('d/m/Y') : date('d/m/Y');
+        $startFormat = $lastShift ? $this->formatInBrasilia($lastShift->start, 'H:i', '--:--') : '--:--';
+        $endFormat = $lastShift ? $this->formatInBrasilia($lastShift->end, 'H:i', '--:--') : '--:--';
+        $dateFormat = $lastShift
+            ? $this->formatInBrasilia($lastShift->start, 'd/m/Y', $this->nowInBrasilia('d/m/Y'))
+            : $this->nowInBrasilia('d/m/Y');
 
         return response()->json([
             'currentShiftId' => $currentShift->id,
@@ -352,7 +427,8 @@ class ShiftController extends Controller
             'date' => $dateFormat,
             'reportText' => $lastShift->briefing ?? 'Pendências acumuladas na mesa.',
             'criticalCount' => $mappedOccurrences->where('priority', 'crítica')->count(),
-            'occurrences' => $mappedOccurrences->values()
+            'occurrences' => $mappedOccurrences->values(),
+            'tempoTrabalhadoTurnoAnterior' => $lastShift ? $this->getWorkedDurationPayload($lastShift)['tempo_trabalhado'] : '0h 00m',
         ]);
     }
 
@@ -366,12 +442,21 @@ class ShiftController extends Controller
             ->get();
 
         $mappedShifts = $shifts->map(function ($shift) {
+            $worked = $this->getWorkedDurationPayload($shift);
+
             return [
+                'shift_id' => (int) $shift->id,
+                'shiftId' => (int) $shift->id,
                 'id' => 'TUR-' . str_pad($shift->id, 4, '0', STR_PAD_LEFT),
                 'operador' => $shift->user->name ?? 'Desconhecido',
-                'horario' => ($shift->start ? $shift->start->format('H:i') : '--:--') . ' - ' . ($shift->end ? $shift->end->format('H:i') : '...'),
-                'tipo' => $shift->role ?? 'MT',
-                'status' => $shift->status === 'in_progress' ? 'Aberto' : 'Fechado'
+                'horario' => $this->formatInBrasilia($shift->start, 'H:i', '--:--') . ' - ' . $this->formatInBrasilia($shift->end, 'H:i', '...'),
+                'tipo' => $this->formatShiftProfileLabel($shift->role, $shift->user->voltage_level ?? null),
+                'tipo_code' => $this->normalizeOperatorProfile($shift->role, $shift->user->voltage_level ?? null),
+                'status' => $shift->status === 'in_progress' ? 'Aberto' : 'Fechado',
+                'tempo_trabalhado_minutos' => $worked['tempo_trabalhado_minutos'],
+                'tempo_trabalhado' => $worked['tempo_trabalhado'],
+                'workedMinutes' => $worked['workedMinutes'],
+                'workedDuration' => $worked['workedDuration'],
             ];
         });
 
@@ -390,15 +475,78 @@ class ShiftController extends Controller
             ->get();
 
         $mapped = $shifts->map(function ($shift) {
+            $worked = $this->getWorkedDurationPayload($shift);
+
             return [
                 'id' => 'TUR-' . str_pad((string) $shift->id, 4, '0', STR_PAD_LEFT),
-                'date' => $shift->start ? $shift->start->format('d/m/Y') : '--/--/----',
-                'time' => ($shift->start ? $shift->start->format('H:i') : '--:--') . ' - ' . ($shift->end ? $shift->end->format('H:i') : '...'),
+                'date' => $this->formatInBrasilia($shift->start, 'd/m/Y', '--/--/----'),
+                'time' => $this->formatInBrasilia($shift->start, 'H:i', '--:--') . ' - ' . $this->formatInBrasilia($shift->end, 'H:i', '...'),
                 'status' => $shift->status,
+                'tempo_trabalhado_minutos' => $worked['tempo_trabalhado_minutos'],
+                'tempo_trabalhado' => $worked['tempo_trabalhado'],
+                'workedMinutes' => $worked['workedMinutes'],
+                'workedDuration' => $worked['workedDuration'],
             ];
         })->values();
 
         return response()->json($mapped);
+    }
+
+    public function show(Shift $shift): JsonResponse
+    {
+        $shift->load(['user:id,name,email,role,voltage_level', 'desk:id,code,name,location', 'occurrences' => function ($query) {
+            $query->orderByDesc('created_at');
+        }]);
+
+        $occurrences = $shift->occurrences->map(function ($occurrence) use ($shift) {
+            $comments = is_array($occurrence->comments) ? $occurrence->comments : [];
+            $locationValue = $occurrence->location;
+
+            return [
+                'id' => $occurrence->id,
+                'title' => $occurrence->title ?? 'Sem título',
+                'description' => $occurrence->description ?? '',
+                'category' => $occurrence->category ?? 'Geral',
+                'priority' => $occurrence->priority,
+                'status' => $occurrence->status,
+                'location' => is_array($locationValue) ? ($locationValue['name'] ?? $locationValue['label'] ?? 'Local não informado') : ($locationValue ?: 'Local não informado'),
+                'linkType' => $occurrence->link_type,
+                'linkValue' => $occurrence->link_value,
+                'createdAt' => $this->formatInBrasilia($occurrence->created_at, 'd/m/Y H:i'),
+                'updatedAt' => $this->formatInBrasilia($occurrence->updated_at, 'd/m/Y H:i'),
+                'commentsCount' => count($comments),
+                'comments' => $comments,
+                'origin' => $occurrence->created_at && $shift->start && $occurrence->created_at->lt($shift->start) ? 'Herdada' : 'Atual',
+                'isOpen' => !$this->isClosedOccurrenceStatus((string) $occurrence->status),
+            ];
+        })->values();
+
+        $openedOccurrences = $occurrences->filter(fn ($occurrence) => $occurrence['isOpen'])->count();
+        $resolvedOccurrences = $occurrences->count() - $openedOccurrences;
+        $worked = $this->getWorkedDurationPayload($shift);
+
+        return response()->json([
+            'id' => (int) $shift->id,
+            'displayId' => 'TUR-' . str_pad($shift->id, 4, '0', STR_PAD_LEFT),
+            'operador' => $shift->user->name ?? 'Desconhecido',
+            'email' => $shift->user->email ?? null,
+            'funcao' => $this->normalizeOperatorProfile($shift->role, $shift->user->voltage_level ?? null),
+            'funcaoLabel' => $this->formatShiftProfileLabel($shift->role, $shift->user->voltage_level ?? null),
+            'mesa' => $shift->desk?->name ?? 'Mesa não informada',
+            'mesaCode' => $shift->desk?->code,
+            'start' => $this->formatInBrasilia($shift->start, 'd/m/Y H:i'),
+            'end' => $this->formatInBrasilia($shift->end, 'd/m/Y H:i'),
+            'status' => $shift->status === 'in_progress' ? 'Aberto' : 'Fechado',
+            'briefing' => $shift->briefing ?? '',
+            'totalOccurrences' => $occurrences->count(),
+            'openOccurrences' => $openedOccurrences,
+            'resolvedOccurrences' => $resolvedOccurrences,
+            'occurrences' => $occurrences,
+            'tempo_trabalhado_minutos' => $worked['tempo_trabalhado_minutos'],
+            'tempo_trabalhado' => $worked['tempo_trabalhado'],
+            'workedMinutes' => $worked['workedMinutes'],
+            'workedDuration' => $worked['workedDuration'],
+        ]);
     }
 
     public function getPreviousShiftDetails(Request $request)
@@ -436,16 +584,16 @@ class ShiftController extends Controller
                 'category' => $occ->category ?? 'Geral',
                 'location' => $occ->location ?? 'Local não informado',
                 'reportedBy' => $lastShift->user->name ?? 'Operador Anterior',
-                'timestamp' => $occ->created_at ? $occ->created_at->format('H:i') : '--:--',
-                'createdAt' => $occ->created_at ? $occ->created_at->format('d/m/Y H:i') : '--',
+                'timestamp' => $this->formatInBrasilia($occ->created_at, 'H:i', '--:--'),
+                'createdAt' => $this->formatInBrasilia($occ->created_at, 'd/m/Y H:i', '--'),
                 'linkType' => $occ->link_type ?? null,
                 'linkValue' => $occ->link_value ?? null,
             ];
         });
 
-        $startFormat = $lastShift->start ? $lastShift->start->format('H:i') : '00:00';
-        $endFormat = $lastShift->end ? $lastShift->end->format('H:i') : '...';
-        $dateFormat = $lastShift->start ? $lastShift->start->format('d/m/Y') : date('d/m/Y');
+        $startFormat = $this->formatInBrasilia($lastShift->start, 'H:i', '00:00');
+        $endFormat = $this->formatInBrasilia($lastShift->end, 'H:i', '...');
+        $dateFormat = $this->formatInBrasilia($lastShift->start, 'd/m/Y', $this->nowInBrasilia('d/m/Y'));
 
         return response()->json([
             'currentShiftId' => $currentShift->id,
@@ -454,7 +602,8 @@ class ShiftController extends Controller
             'date' => $dateFormat,
             'reportText' => $lastShift->briefing ?? 'Sem relatório inserido.',
             'criticalCount' => $mappedOccurrences->where('priority', 'crítica')->where('status', 'Aberta')->count(),
-            'occurrences' => $mappedOccurrences->values()
+            'occurrences' => $mappedOccurrences->values(),
+            'tempoTrabalhadoTurnoAnterior' => $this->getWorkedDurationPayload($lastShift)['tempo_trabalhado'],
         ]);
     }
 }
