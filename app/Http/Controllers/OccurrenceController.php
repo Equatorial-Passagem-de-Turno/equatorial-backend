@@ -111,7 +111,9 @@ class OccurrenceController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $currentShift = \App\Models\Shift::where('user_id', $request->user()->id)
+        $currentShift = \App\Models\Shift::query()
+            ->select(['id', 'operation_desk_id', 'start', 'status'])
+            ->where('user_id', $request->user()->id)
             ->where('status', 'in_progress')
             ->first();
 

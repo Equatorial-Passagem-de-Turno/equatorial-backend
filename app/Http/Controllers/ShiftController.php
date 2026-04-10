@@ -104,6 +104,10 @@ class ShiftController extends Controller
     public function getActiveOperatorsSummary(Request $request): JsonResponse
     {
         $activeShifts = Shift::query()
+            ->whereHas('user', function ($query) {
+                $query->where('active', true)
+                    ->whereRaw('LOWER(role) = ?', ['operador']);
+            })
             ->with([
                 'user:id,name,email,role,voltage_level,active',
                 'desk:id,code,name',
@@ -114,7 +118,6 @@ class ShiftController extends Controller
             ->get();
 
         $rows = $activeShifts
-            ->filter(fn (Shift $shift) => $shift->user && $shift->user->active && strtolower((string) $shift->user->role) === 'operador')
             ->map(function (Shift $shift) {
                 $all = $shift->occurrences ?? collect();
 
@@ -326,9 +329,16 @@ class ShiftController extends Controller
 
     public function getCurrentShift(Request $request): JsonResponse
     {
-        $shift = \App\Models\Shift::with(['desk', 'occurrences' => function($query) {
-            $query->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled']);
-        }])
+        $shift = \App\Models\Shift::query()
+        ->select(['id', 'user_id', 'operation_desk_id', 'role', 'start', 'end', 'status', 'briefing'])
+        ->with([
+            'desk:id,name,code',
+            'occurrences' => function($query) {
+                $query
+                    ->select(['id', 'shift_id', 'title', 'priority', 'status', 'created_at'])
+                    ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled']);
+            }
+        ])
         ->where('user_id', $request->user()->id)
         ->where('status', 'in_progress')
         ->first();
@@ -389,7 +399,7 @@ class ShiftController extends Controller
             ->get();
 
         if ($pendingOccurrences->isEmpty()) {
-            return response()->json(['message' => 'Nenhuma pendência para herdar'], 404);
+            return response()->json(['occurrences' => []], 200);
         }
 
         $lastShift = null;
@@ -436,7 +446,9 @@ class ShiftController extends Controller
     {
         $date = $request->query('date', now()->toDateString());
 
-        $shifts = \App\Models\Shift::with(['user'])
+        $shifts = \App\Models\Shift::query()
+            ->select(['id', 'user_id', 'role', 'start', 'end', 'status'])
+            ->with(['user:id,name,voltage_level'])
             ->whereDate('start', $date)
             ->orderBy('start', 'desc')
             ->get();
