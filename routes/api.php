@@ -7,30 +7,11 @@ use App\Http\Controllers\OperationDeskController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Artisan;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'authenticate']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
-
-// teste deploy
-Route::get('/setup-banco', function () {
-    try {
-        // Executa as migrations forçadamente (necessário em produção)
-        Artisan::call('migrate', ['--force' => true]);
-        
-        return response()->json([
-            'status' => 'sucesso',
-            'mensagem' => 'Migrations executadas com sucesso no Supabase!'
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'status' => 'erro',
-            'mensagem' => $e->getMessage()
-        ]);
-    }
-});
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
