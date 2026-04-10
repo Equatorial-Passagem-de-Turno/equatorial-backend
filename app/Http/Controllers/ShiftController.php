@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use DomainException;
 use Exception;
 use Carbon\Carbon;
@@ -329,55 +330,68 @@ class ShiftController extends Controller
 
     public function getCurrentShift(Request $request): JsonResponse
     {
-        $shift = \App\Models\Shift::query()
-        ->select(['id', 'user_id', 'operation_desk_id', 'role', 'start', 'end', 'status', 'briefing'])
-        ->with([
-            'desk:id,name,code',
-            'occurrences' => function($query) {
-                $query
-                    ->select(['id', 'shift_id', 'title', 'priority', 'status', 'created_at'])
-                    ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled']);
+        try {
+            $shift = \App\Models\Shift::query()
+            ->select(['id', 'user_id', 'operation_desk_id', 'role', 'start', 'end', 'status', 'briefing'])
+            ->with([
+                'desk:id,name,code',
+                'occurrences' => function($query) {
+                    $query
+                        ->select(['id', 'shift_id', 'title', 'priority', 'status', 'created_at'])
+                        ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled']);
+                }
+            ])
+            ->where('user_id', $request->user()->id)
+            ->where('status', 'in_progress')
+            ->first();
+
+            if (!$shift) {
+                return response()->json(null, 200);
             }
-        ])
-        ->where('user_id', $request->user()->id)
-        ->where('status', 'in_progress')
-        ->first();
 
-        if (!$shift) {
-            return response()->json(null, 200);
-        }
+            $herdadas = [];
+            $deixadas = [];
 
-        $herdadas = [];
-        $deixadas = [];
+            if ($shift->occurrences) {
+                foreach ($shift->occurrences as $occ) {
+                    $item = [
+                        'id' => $occ->id,
+                        'descricao' => $occ->title,
+                        'prioridade' => $occ->priority,
+                    ];
 
-        if ($shift->occurrences) {
-            foreach ($shift->occurrences as $occ) {
-                $item = [
-                    'id' => $occ->id,
-                    'descricao' => $occ->title,
-                    'prioridade' => $occ->priority,
-                ];
+                    $isInherited = $shift->start && $occ->created_at
+                        ? $occ->created_at->lt($shift->start)
+                        : false;
 
-                if ($occ->created_at < $shift->start) {
-                    $herdadas[] = $item;
-                } else {
-                    $deixadas[] = $item;
+                    if ($isInherited) {
+                        $herdadas[] = $item;
+                    } else {
+                        $deixadas[] = $item;
+                    }
                 }
             }
-        }
 
-        return response()->json([
-            'id' => $shift->id,
-            'operador' => $request->user()->name,
-            'funcao' => $shift->role,
-            'inicio' => $this->formatInBrasilia($shift->start, 'H:i'),
-            'data' => $this->formatInBrasilia($shift->start, 'd/m/Y'),
-            'start_utc' => $shift->start ? $shift->start->toISOString() : null,
-            'briefing' => $shift->briefing ?? '',
-            'pendenciasHerdadas' => $herdadas,
-            'pendenciasDeixadas' => $deixadas,
-            ...$this->getWorkedDurationPayload($shift),
-        ]);
+            return response()->json([
+                'id' => $shift->id,
+                'operador' => $request->user()->name,
+                'funcao' => $shift->role,
+                'inicio' => $this->formatInBrasilia($shift->start, 'H:i'),
+                'data' => $this->formatInBrasilia($shift->start, 'd/m/Y'),
+                'start_utc' => $shift->start ? $shift->start->toISOString() : null,
+                'briefing' => $shift->briefing ?? '',
+                'pendenciasHerdadas' => $herdadas,
+                'pendenciasDeixadas' => $deixadas,
+                ...$this->getWorkedDurationPayload($shift),
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('Falha ao carregar turno atual', [
+                'user_id' => $request->user()?->id,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return response()->json(null, 200);
+        }
     }
 
     public function getPreviousShift(Request $request)
