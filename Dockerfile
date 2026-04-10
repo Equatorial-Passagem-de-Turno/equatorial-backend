@@ -26,7 +26,13 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
 # Instala as dependências do Laravel
 RUN composer install --no-dev --optimize-autoloader
 
-# Ajusta as permissões das pastas storage e bootstrap/cache
+# Garante que as pastas de cache e framework existam (O Git costuma ignorar pastas vazias)
+RUN mkdir -p /var/www/html/storage/framework/sessions \
+    && mkdir -p /var/www/html/storage/framework/views \
+    && mkdir -p /var/www/html/storage/framework/cache \
+    && mkdir -p /var/www/html/bootstrap/cache
+
+# Ajusta as permissões das pastas para o servidor web (Apache) poder escrever nelas
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 EXPOSE 80
