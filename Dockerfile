@@ -1,11 +1,12 @@
 FROM php:8.2-apache
 
-# Instala dependências do sistema e extensões do PHP
+# Instala dependências do sistema e extensões do PHP (Com suporte a PostgreSQL)
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libzip-dev \
     zip \
     unzip \
+    libpq-dev \
     && docker-php-ext-install pdo_mysql pdo_pgsql zip gd
 
 # Habilita o mod_rewrite do Apache
