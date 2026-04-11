@@ -396,97 +396,117 @@ class ShiftController extends Controller
 
     public function getPreviousShift(Request $request)
     {
-        $currentShift = \App\Models\Shift::where('user_id', $request->user()->id)
-            ->where('status', 'in_progress')
-            ->first();
+        try {
+            $currentShift = \App\Models\Shift::where('user_id', $request->user()->id)
+                ->where('status', 'in_progress')
+                ->first();
 
-        if (!$currentShift || $currentShift->handover_acknowledged) {
+            if (!$currentShift || $currentShift->handover_acknowledged) {
+                return response()->json(['occurrences' => []], 200);
+            }
+
+            $pendingOccurrences = \App\Models\Occurrence::with(['shift.user'])
+                ->whereHas('shift', function ($query) use ($currentShift) {
+                    $query->where('operation_desk_id', $currentShift->operation_desk_id);
+                })
+                ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
+                ->where('created_at', '<', $currentShift->start)
+                ->get();
+
+            if ($pendingOccurrences->isEmpty()) {
+                return response()->json(['occurrences' => []], 200);
+            }
+
+            $lastShift = null;
+            if ($currentShift->previous_shift_id) {
+                $lastShift = \App\Models\Shift::with(['user'])->find($currentShift->previous_shift_id);
+            }
+
+            $mappedOccurrences = $pendingOccurrences->map(function ($occ) {
+                return [
+                    'id' => $occ->id,
+                    'title' => $occ->title ?? 'Sem Título',
+                    'description' => $occ->description ?? '',
+                    'priority' => $occ->priority,
+                    'status' => $occ->status,
+                    'category' => $occ->category ?? 'Geral',
+                    'location' => $occ->location ?? 'Local não informado',
+                    'reportedBy' => $occ->shift?->user?->name ?? 'Operador Anterior',
+                    'timestamp' => $this->formatInBrasilia($occ->created_at, 'H:i', '--:--'),
+                    'createdAt' => $this->formatInBrasilia($occ->created_at, 'd/m/Y H:i', '--'),
+                    'linkType' => $occ->link_type ?? null,
+                    'linkValue' => $occ->link_value ?? null,
+                ];
+            });
+
+            $startFormat = $lastShift ? $this->formatInBrasilia($lastShift->start, 'H:i', '--:--') : '--:--';
+            $endFormat = $lastShift ? $this->formatInBrasilia($lastShift->end, 'H:i', '--:--') : '--:--';
+            $dateFormat = $lastShift
+                ? $this->formatInBrasilia($lastShift->start, 'd/m/Y', $this->nowInBrasilia('d/m/Y'))
+                : $this->nowInBrasilia('d/m/Y');
+
+            return response()->json([
+                'currentShiftId' => $currentShift->id,
+                'previousOperator' => $lastShift?->user?->name ?? 'Múltiplos Operadores',
+                'shiftTime' => $startFormat . ' - ' . $endFormat,
+                'date' => $dateFormat,
+                'reportText' => $lastShift?->briefing ?? 'Pendências acumuladas na mesa.',
+                'criticalCount' => $mappedOccurrences->where('priority', 'crítica')->count(),
+                'occurrences' => $mappedOccurrences->values(),
+                'tempoTrabalhadoTurnoAnterior' => $lastShift ? $this->getWorkedDurationPayload($lastShift)['tempo_trabalhado'] : '0h 00m',
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('Falha ao carregar handover do turno anterior', [
+                'user_id' => $request->user()?->id,
+                'message' => $exception->getMessage(),
+            ]);
+
             return response()->json(['occurrences' => []], 200);
         }
-
-        $pendingOccurrences = \App\Models\Occurrence::with(['shift.user'])
-            ->whereHas('shift', function ($query) use ($currentShift) {
-                $query->where('operation_desk_id', $currentShift->operation_desk_id);
-            })
-            ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
-            ->where('created_at', '<', $currentShift->start)
-            ->get();
-
-        if ($pendingOccurrences->isEmpty()) {
-            return response()->json(['occurrences' => []], 200);
-        }
-
-        $lastShift = null;
-        if ($currentShift->previous_shift_id) {
-            $lastShift = \App\Models\Shift::with(['user'])->find($currentShift->previous_shift_id);
-        }
-
-        $mappedOccurrences = $pendingOccurrences->map(function ($occ) {
-            return [
-                'id' => $occ->id,
-                'title' => $occ->title ?? 'Sem Título',
-                'description' => $occ->description ?? '',
-                'priority' => $occ->priority, 
-                'status' => $occ->status,
-                'category' => $occ->category ?? 'Geral',
-                'location' => $occ->location ?? 'Local não informado',
-                'reportedBy' => $occ->shift->user->name ?? 'Operador Anterior', 
-                'timestamp' => $this->formatInBrasilia($occ->created_at, 'H:i', '--:--'),
-                'createdAt' => $this->formatInBrasilia($occ->created_at, 'd/m/Y H:i', '--'),
-                'linkType' => $occ->link_type ?? null,
-                'linkValue' => $occ->link_value ?? null,
-            ];
-        });
-
-        $startFormat = $lastShift ? $this->formatInBrasilia($lastShift->start, 'H:i', '--:--') : '--:--';
-        $endFormat = $lastShift ? $this->formatInBrasilia($lastShift->end, 'H:i', '--:--') : '--:--';
-        $dateFormat = $lastShift
-            ? $this->formatInBrasilia($lastShift->start, 'd/m/Y', $this->nowInBrasilia('d/m/Y'))
-            : $this->nowInBrasilia('d/m/Y');
-
-        return response()->json([
-            'currentShiftId' => $currentShift->id,
-            'previousOperator' => $lastShift->user->name ?? 'Múltiplos Operadores',
-            'shiftTime' => $startFormat . ' - ' . $endFormat,
-            'date' => $dateFormat,
-            'reportText' => $lastShift->briefing ?? 'Pendências acumuladas na mesa.',
-            'criticalCount' => $mappedOccurrences->where('priority', 'crítica')->count(),
-            'occurrences' => $mappedOccurrences->values(),
-            'tempoTrabalhadoTurnoAnterior' => $lastShift ? $this->getWorkedDurationPayload($lastShift)['tempo_trabalhado'] : '0h 00m',
-        ]);
     }
 
     public function getShiftsByDate(Request $request): JsonResponse
     {
-        $date = $request->query('date', now()->toDateString());
+        try {
+            $date = $request->query('date', now()->toDateString());
 
-        $shifts = \App\Models\Shift::query()
-            ->select(['id', 'user_id', 'role', 'start', 'end', 'status'])
-            ->with(['user:id,name,voltage_level'])
-            ->whereDate('start', $date)
-            ->orderBy('start', 'desc')
-            ->get();
+            $shifts = \App\Models\Shift::query()
+                ->select(['id', 'user_id', 'role', 'start', 'end', 'status'])
+                ->with(['user:id,name,voltage_level'])
+                ->whereDate('start', $date)
+                ->orderBy('start', 'desc')
+                ->get();
 
-        $mappedShifts = $shifts->map(function ($shift) {
-            $worked = $this->getWorkedDurationPayload($shift);
+            $mappedShifts = $shifts->map(function ($shift) {
+                $worked = $this->getWorkedDurationPayload($shift);
+                $voltageLevel = $shift->user?->voltage_level;
 
-            return [
-                'shift_id' => (int) $shift->id,
-                'shiftId' => (int) $shift->id,
-                'id' => 'TUR-' . str_pad($shift->id, 4, '0', STR_PAD_LEFT),
-                'operador' => $shift->user->name ?? 'Desconhecido',
-                'horario' => $this->formatInBrasilia($shift->start, 'H:i', '--:--') . ' - ' . $this->formatInBrasilia($shift->end, 'H:i', '...'),
-                'tipo' => $this->formatShiftProfileLabel($shift->role, $shift->user->voltage_level ?? null),
-                'tipo_code' => $this->normalizeOperatorProfile($shift->role, $shift->user->voltage_level ?? null),
-                'status' => $shift->status === 'in_progress' ? 'Aberto' : 'Fechado',
-                'tempo_trabalhado_minutos' => $worked['tempo_trabalhado_minutos'],
-                'tempo_trabalhado' => $worked['tempo_trabalhado'],
-                'workedMinutes' => $worked['workedMinutes'],
-                'workedDuration' => $worked['workedDuration'],
-            ];
-        });
+                return [
+                    'shift_id' => (int) $shift->id,
+                    'shiftId' => (int) $shift->id,
+                    'id' => 'TUR-' . str_pad((string) $shift->id, 4, '0', STR_PAD_LEFT),
+                    'operador' => $shift->user?->name ?? 'Desconhecido',
+                    'horario' => $this->formatInBrasilia($shift->start, 'H:i', '--:--') . ' - ' . $this->formatInBrasilia($shift->end, 'H:i', '...'),
+                    'tipo' => $this->formatShiftProfileLabel($shift->role, $voltageLevel),
+                    'tipo_code' => $this->normalizeOperatorProfile($shift->role, $voltageLevel),
+                    'status' => $shift->status === 'in_progress' ? 'Aberto' : 'Fechado',
+                    'tempo_trabalhado_minutos' => $worked['tempo_trabalhado_minutos'],
+                    'tempo_trabalhado' => $worked['tempo_trabalhado'],
+                    'workedMinutes' => $worked['workedMinutes'],
+                    'workedDuration' => $worked['workedDuration'],
+                ];
+            });
 
-        return response()->json($mappedShifts);
+            return response()->json($mappedShifts);
+        } catch (\Throwable $exception) {
+            Log::error('Falha ao listar turnos por data', [
+                'user_id' => $request->user()?->id,
+                'date' => $request->query('date'),
+                'message' => $exception->getMessage(),
+            ]);
+
+            return response()->json([], 200);
+        }
     }
 
     public function getShiftsByUser(Request $request, int $userId): JsonResponse

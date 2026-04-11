@@ -8,6 +8,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\JsonResponse;
 
@@ -15,31 +17,50 @@ class UserController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $includeInactive = $request->boolean('include_inactive');
+        try {
+            $includeInactive = $request->boolean('include_inactive');
+            $hasDeskColumn = Schema::hasColumn('users', 'operation_desk_id');
 
-        $users = User::query()
-            ->with('operationDesk:id,name')
-            ->where('id', '!=', $request->user()->id)
-            ->when(!$includeInactive, function ($query) {
-                $query->where('active', true);
-            })
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'voltage_level', 'operation_desk_id', 'active']);
+            $selectColumns = ['id', 'name', 'email', 'role', 'voltage_level', 'active'];
+            if ($hasDeskColumn) {
+                $selectColumns[] = 'operation_desk_id';
+            }
 
-        $payload = $users->map(function (User $user) {
-            return [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-                'voltage_level' => $user->voltage_level,
-                'operation_desk_id' => $user->operation_desk_id,
-                'operation_desk_name' => $user->operationDesk?->name,
-                'active' => (bool) $user->active,
-            ];
-        });
+            $query = User::query()
+                ->where('id', '!=', $request->user()->id)
+                ->when(!$includeInactive, function ($q) {
+                    $q->where('active', true);
+                })
+                ->orderBy('name');
 
-        return response()->json($payload, 200);
+            if ($hasDeskColumn) {
+                $query->with('operationDesk:id,name');
+            }
+
+            $users = $query->get($selectColumns);
+
+            $payload = $users->map(function (User $user) use ($hasDeskColumn) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'voltage_level' => $user->voltage_level,
+                    'operation_desk_id' => $hasDeskColumn ? $user->operation_desk_id : null,
+                    'operation_desk_name' => $hasDeskColumn ? $user->operationDesk?->name : null,
+                    'active' => (bool) $user->active,
+                ];
+            });
+
+            return response()->json($payload, 200);
+        } catch (\Throwable $exception) {
+            Log::error('Falha ao listar usuarios', [
+                'request_user_id' => $request->user()?->id,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return response()->json([], 200);
+        }
     }
 
     public function store(Request $request): JsonResponse
