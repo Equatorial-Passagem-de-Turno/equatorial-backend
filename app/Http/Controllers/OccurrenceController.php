@@ -6,6 +6,8 @@ use App\Models\Occurrence;
 use App\Models\Shift;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Exception;
 
 class OccurrenceController extends Controller
@@ -111,23 +113,24 @@ class OccurrenceController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $currentShift = \App\Models\Shift::query()
-            ->select(['id', 'operation_desk_id', 'start', 'status'])
-            ->where('user_id', $request->user()->id)
-            ->where('status', 'in_progress')
-            ->first();
+        try {
+            $currentShift = \App\Models\Shift::query()
+                ->select(['id', 'operation_desk_id', 'start', 'status'])
+                ->where('user_id', $request->user()->id)
+                ->where('status', 'in_progress')
+                ->first();
 
-        $accountRole = strtolower((string) $request->user()->role);
-        $isSupervisor = in_array($accountRole, ['supervisor', 'admin', 'adm'], true);
+            $accountRole = strtolower((string) $request->user()->role);
+            $isSupervisor = in_array($accountRole, ['supervisor', 'admin', 'adm'], true);
 
-        if (!$currentShift && !$isSupervisor) {
-            return response()->json([]);
-        }
+            if (!$currentShift && !$isSupervisor) {
+                return response()->json([]);
+            }
 
-        $maxItems = $isSupervisor ? 1200 : 800;
+            $maxItems = $isSupervisor ? 1200 : 800;
+            $hasRemindersColumn = Schema::hasColumn('occurrences', 'reminders');
 
-        $occurrencesQuery = \App\Models\Occurrence::query()
-            ->select([
+            $selectColumns = [
                 'id',
                 'user_id',
                 'shift_id',
@@ -141,53 +144,65 @@ class OccurrenceController extends Controller
                 'link_value',
                 'attachments',
                 'comments',
-                'reminders',
                 'created_at',
                 'updated_at',
-            ])
-            ->with([
-                'shift:id,operation_desk_id,end',
-                'shift.desk:id,name',
-                'user:id,name',
+            ];
+
+            if ($hasRemindersColumn) {
+                $selectColumns[] = 'reminders';
+            }
+
+            $occurrencesQuery = \App\Models\Occurrence::query()
+                ->select($selectColumns)
+                ->with([
+                    'shift:id,operation_desk_id,end',
+                    'shift.desk:id,name',
+                    'user:id,name',
+                ]);
+
+            if ($currentShift) {
+                $occurrencesQuery->whereHas('shift', function ($query) use ($currentShift) {
+                    $query->where('operation_desk_id', $currentShift->operation_desk_id);
+                });
+            }
+
+            if ($isSupervisor && !$currentShift) {
+                $occurrencesQuery->where('created_at', '>=', now()->subDays(30));
+            }
+
+            $occurrences = $occurrencesQuery
+                ->where(function($query) {
+                    $query->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
+                        ->orWhere('created_at', '>=', now()->subDays(15));
+                })
+                ->orderByDesc('id')
+                ->limit($maxItems)
+                ->get();
+
+            $filteredOccurrences = $occurrences->filter(function ($occ) {
+                $isClosed = $this->isClosedStatus((string) $occ->status);
+
+                if ($isClosed && $occ->shift && $occ->shift->end) {
+                    if ($occ->updated_at > $occ->shift->end) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            $mapped = $filteredOccurrences->values()->map(function ($occurrence) use ($currentShift) {
+                return $this->mapOccurrenceForFrontend($occurrence, $currentShift);
+            });
+
+            return response()->json($mapped);
+        } catch (\Throwable $exception) {
+            Log::error('Falha ao listar ocorrencias', [
+                'user_id' => $request->user()?->id,
+                'message' => $exception->getMessage(),
             ]);
 
-        if ($currentShift) {
-            $occurrencesQuery->whereHas('shift', function ($query) use ($currentShift) {
-                $query->where('operation_desk_id', $currentShift->operation_desk_id);
-            });
+            return response()->json([], 200);
         }
-
-        if ($isSupervisor && !$currentShift) {
-            $occurrencesQuery->where('created_at', '>=', now()->subDays(30));
-        }
-
-        $occurrences = $occurrencesQuery
-            ->where(function($query) {
-                $query->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
-                      ->orWhere('created_at', '>=', now()->subDays(15));
-            })
-            // Avoid heavy DB sorting by datetime on large datasets.
-            // IDs are unique and prefixed by period, good enough for recent-first listing here.
-            ->orderByDesc('id')
-            ->limit($maxItems)
-            ->get();
-
-        $filteredOccurrences = $occurrences->filter(function ($occ) {
-            $isClosed = $this->isClosedStatus((string) $occ->status);
-            
-            if ($isClosed && $occ->shift && $occ->shift->end) {
-                if ($occ->updated_at > $occ->shift->end) {
-                    return false;
-                }
-            }
-            return true;
-        });
-
-        $mapped = $filteredOccurrences->values()->map(function ($occurrence) use ($currentShift) {
-            return $this->mapOccurrenceForFrontend($occurrence, $currentShift);
-        });
-
-        return response()->json($mapped);
     }
 
     public function store(Request $request)

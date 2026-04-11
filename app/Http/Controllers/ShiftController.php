@@ -104,48 +104,62 @@ class ShiftController extends Controller
 
     public function getActiveOperatorsSummary(Request $request): JsonResponse
     {
-        $activeShifts = Shift::query()
-            ->whereHas('user', function ($query) {
-                $query->where('active', true)
-                    ->whereRaw('LOWER(role) = ?', ['operador']);
-            })
-            ->with([
-                'user:id,name,email,role,voltage_level,active',
-                'desk:id,code,name',
-                'occurrences:id,shift_id,status,created_at',
-            ])
-            ->where('status', 'in_progress')
-            ->orderByDesc('start')
-            ->get();
+        try {
+            $activeShifts = Shift::query()
+                ->whereHas('user', function ($query) {
+                    $query->where('active', true)
+                        ->whereRaw('LOWER(role) = ?', ['operador']);
+                })
+                ->with([
+                    'user:id,name,email,role,voltage_level,active',
+                    'desk:id,code,name',
+                    'occurrences:id,shift_id,status,created_at',
+                ])
+                ->where('status', 'in_progress')
+                ->orderByDesc('start')
+                ->get();
 
-        $rows = $activeShifts
-            ->map(function (Shift $shift) {
-                $all = $shift->occurrences ?? collect();
+            $rows = $activeShifts
+                ->map(function (Shift $shift) {
+                    if (!$shift->user) {
+                        return null;
+                    }
 
-                $resolved = $all->filter(fn ($occ) => $this->isClosedOccurrenceStatus((string) $occ->status))->count();
+                    $all = $shift->occurrences ?? collect();
 
-                $open = $all->filter(fn ($occ) => !$this->isClosedOccurrenceStatus((string) $occ->status));
-                $inherited = $open->filter(fn ($occ) => $shift->start && $occ->created_at && $occ->created_at->lt($shift->start))->count();
-                $created = $open->filter(fn ($occ) => !$shift->start || !$occ->created_at || $occ->created_at->gte($shift->start))->count();
+                    $resolved = $all->filter(fn ($occ) => $this->isClosedOccurrenceStatus((string) $occ->status))->count();
 
-                return [
-                    'id' => (string) $shift->user->id,
-                    'name' => $shift->user->name,
-                    'email' => $shift->user->email,
-                    'profile' => $this->normalizeOperatorProfile($shift->role, $shift->user->voltage_level),
-                    'table_id' => $shift->operation_desk_id ? (int) $shift->operation_desk_id : null,
-                    'table' => $shift->desk?->name ?? 'N/A',
-                    'table_code' => $shift->desk?->code,
-                    'status' => 'Ativo',
-                    'inherited_occurrences' => $inherited,
-                    'created_occurrences' => $created,
-                    'resolved_occurrences' => $resolved,
-                    'assumed_occurrences' => $inherited + $created + $resolved,
-                ];
-            })
-            ->values();
+                    $open = $all->filter(fn ($occ) => !$this->isClosedOccurrenceStatus((string) $occ->status));
+                    $inherited = $open->filter(fn ($occ) => $shift->start && $occ->created_at && $occ->created_at->lt($shift->start))->count();
+                    $created = $open->filter(fn ($occ) => !$shift->start || !$occ->created_at || $occ->created_at->gte($shift->start))->count();
 
-        return response()->json($rows);
+                    return [
+                        'id' => (string) $shift->user->id,
+                        'name' => $shift->user->name,
+                        'email' => $shift->user->email,
+                        'profile' => $this->normalizeOperatorProfile($shift->role, $shift->user->voltage_level),
+                        'table_id' => $shift->operation_desk_id ? (int) $shift->operation_desk_id : null,
+                        'table' => $shift->desk?->name ?? 'N/A',
+                        'table_code' => $shift->desk?->code,
+                        'status' => 'Ativo',
+                        'inherited_occurrences' => $inherited,
+                        'created_occurrences' => $created,
+                        'resolved_occurrences' => $resolved,
+                        'assumed_occurrences' => $inherited + $created + $resolved,
+                    ];
+                })
+                ->filter()
+                ->values();
+
+            return response()->json($rows);
+        } catch (\Throwable $exception) {
+            Log::error('Falha ao listar operadores ativos', [
+                'request_user_id' => $request->user()?->id,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return response()->json([], 200);
+        }
     }
 
     public function reopen(Request $request): JsonResponse
