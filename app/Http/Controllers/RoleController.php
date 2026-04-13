@@ -10,7 +10,7 @@ class RoleController extends Controller
 {
     public function index(): JsonResponse
     {
-        $roles = Roles::where('is_active', true)->get(['id', 'name', 'description']);
+        $roles = Roles::where('is_active', 'true')->get(['id', 'name', 'description']);
         return response()->json($roles, 200);
     }
 }
