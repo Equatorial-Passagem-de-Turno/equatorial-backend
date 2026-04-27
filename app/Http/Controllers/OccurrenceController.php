@@ -12,7 +12,7 @@ use Exception;
 
 class OccurrenceController extends Controller
 {
-    private array $closedStatuses = ['resolved', 'finished', 'resolvida', 'finalizada', 'cancelada', 'fechada', 'encerrada', 'closed', 'cancelled', 'canceled'];
+    private array $closedStatuses = ['resolved', 'finished', 'resolvida', 'finalizada', 'cancelada', 'fechada', 'encerrada', 'closed', 'cancelled', 'canceled', 'transferred'];
 
     private function isClosedStatus(string $status): bool
     {
@@ -489,7 +489,7 @@ class OccurrenceController extends Controller
                     ->update(['created_at' => (clone $currentShift->start)->subMinutes(5)]);
 
                 if ($oldId) {
-                    Occurrence::where('id', $oldId)->update(['status' => 'resolved']);
+                    Occurrence::where('id', $oldId)->update(['status' => 'transferred']);
                 }
             }
 

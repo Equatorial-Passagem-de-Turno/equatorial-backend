@@ -626,28 +626,30 @@ class ShiftController extends Controller
         }
 
         $mappedOccurrences = $lastShift->occurrences->map(function ($occ) use ($lastShift) {
+            $rawStatus = $occ->getRawOriginal('status'); // bypassa o accessor
 
-            $statusReal = $occ->status;
-
-            if (in_array($occ->status, ['Resolvida', 'Finalizada', 'resolved', 'finished'])) {
-                if ($occ->updated_at > $lastShift->end) {
-                    $statusReal = 'Aberta';
-                }
-            }
+            $statusReal = match($rawStatus) {
+                'open'        => 'Aberta',
+                'in_progress' => 'Em Andamento',
+                'resolved'    => 'Resolvida',
+                'finished'    => 'Finalizada',
+                'transferred' => 'Aberta', // assumida = ainda era pendente quando o turno acabou
+                default       => ucfirst($rawStatus),
+            };
 
             return [
-                'id' => $occ->id,
-                'title' => $occ->title ?? 'Sem Título',
+                'id'          => $occ->id,
+                'title'       => $occ->title ?? 'Sem Título',
                 'description' => $occ->description ?? '',
-                'priority' => $occ->priority,
-                'status' => ucfirst($statusReal),
-                'category' => $occ->category ?? 'Geral',
-                'location' => $occ->location ?? 'Local não informado',
-                'reportedBy' => $lastShift->user->name ?? 'Operador Anterior',
-                'timestamp' => $this->formatInBrasilia($occ->created_at, 'H:i', '--:--'),
-                'createdAt' => $this->formatInBrasilia($occ->created_at, 'd/m/Y H:i', '--'),
-                'linkType' => $occ->link_type ?? null,
-                'linkValue' => $occ->link_value ?? null,
+                'priority'    => $occ->priority,
+                'status'      => $statusReal,
+                'category'    => $occ->category ?? 'Geral',
+                'location'    => $occ->location ?? 'Local não informado',
+                'reportedBy'  => $lastShift->user->name ?? 'Operador Anterior',
+                'timestamp'   => $this->formatInBrasilia($occ->created_at, 'H:i', '--:--'),
+                'createdAt'   => $this->formatInBrasilia($occ->created_at, 'd/m/Y H:i', '--'),
+                'linkType'    => $occ->link_type ?? null,
+                'linkValue'   => $occ->link_value ?? null,
             ];
         });
 
