@@ -401,6 +401,41 @@ class OccurrenceController extends Controller
         }
     }
 
+    public function appendComment(Request $request, $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'text' => 'required|string',
+                'type' => 'nullable|string|max:50',
+            ]);
+
+            $occurrence = Occurrence::with(['user', 'shift.desk'])->findOrFail($id);
+            $comments = is_array($occurrence->comments) ? $occurrence->comments : [];
+
+            $comments = array_values($comments);
+            array_unshift($comments, [
+                'id' => 'cmt-' . uniqid(),
+                'author' => $request->user()->name ?? 'Sistema',
+                'text' => $validated['text'],
+                'type' => $validated['type'] ?? 'Geral',
+                'createdAt' => now()->toISOString(),
+            ]);
+
+            $occurrence->comments = $comments;
+            $occurrence->save();
+
+            $occurrence->refresh();
+            $occurrence->load(['user', 'shift.desk']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->mapOccurrenceForFrontend($occurrence, $occurrence->shift),
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 400);
+        }
+    }
+
     public function destroy($id): JsonResponse
     {
         $occurrence = Occurrence::findOrFail($id);

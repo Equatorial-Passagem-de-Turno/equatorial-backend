@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}', [OccurrenceController::class, 'update']);
         Route::delete('/{id}', [OccurrenceController::class, 'destroy']);
         Route::post('/bulk', [OccurrenceController::class, 'bulkStore']);
+        Route::post('/{id}/comments', [OccurrenceController::class, 'appendComment']);
     });
 
     // Circuit Switching routes
