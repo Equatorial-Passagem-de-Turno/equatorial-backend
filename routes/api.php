@@ -6,6 +6,8 @@ use App\Http\Controllers\OccurrenceController;
 use App\Http\Controllers\OperationDeskController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\CircuitSwitchingController;
+use App\Http\Controllers\UnavailableEquipmentController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -50,5 +52,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}', [OccurrenceController::class, 'update']);
         Route::delete('/{id}', [OccurrenceController::class, 'destroy']);
         Route::post('/bulk', [OccurrenceController::class, 'bulkStore']);
+    });
+
+    // Circuit Switching routes
+    Route::prefix('circuit-switchings')->group(function () {
+        Route::get('/', [CircuitSwitchingController::class, 'index']);
+        Route::post('/', [CircuitSwitchingController::class, 'store']);
+        Route::get('/{id}', [CircuitSwitchingController::class, 'show']);
+        Route::put('/{id}', [CircuitSwitchingController::class, 'update']);
+        Route::delete('/{id}', [CircuitSwitchingController::class, 'destroy']);
+    });
+
+    // Unavailable Equipment routes
+    Route::prefix('unavailable-equipments')->group(function () {
+        Route::get('/', [UnavailableEquipmentController::class, 'index']);
+        Route::post('/', [UnavailableEquipmentController::class, 'store']);
+        Route::get('/{id}', [UnavailableEquipmentController::class, 'show']);
+        Route::put('/{id}', [UnavailableEquipmentController::class, 'update']);
+        Route::delete('/{id}', [UnavailableEquipmentController::class, 'destroy']);
     });
 });
