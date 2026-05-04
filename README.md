@@ -1,59 +1,184 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Equatorial - Passagem de Turno (Backend)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Backend em Laravel 12 para a aplicacao de passagem de turno. Este README foi feito para quem nao tem familiaridade com a tecnologia.
 
-## About Laravel
+## Visao geral
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- API REST para o sistema de passagem de turno.
+- Autenticacao via Sanctum.
+- Fila de jobs configurada por padrao no banco (database).
+- Assets com Vite.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Requisitos
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- PHP 8.2+ com extensoes comuns do Laravel (pdo, mbstring, openssl, tokenizer, xml, ctype, json).
+- Composer.
+- Node.js 18+ e npm.
+- Git (para clonar o repositorio).
+- Banco de dados (padrao: SQLite).
 
-## Learning Laravel
+## Inicio rapido (1 comando)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Opcao recomendada (faz tudo automaticamente):
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```bash
+composer setup
+```
 
-## Laravel Sponsors
+Esse comando instala dependencias, cria o arquivo [.env](.env) se nao existir, gera `APP_KEY`, roda migrations, instala npm e gera o build.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Passo a passo super detalhado (primeira vez)
 
-### Premium Partners
+Use este passo a passo se voce nunca mexeu com isso.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### 0) Baixe o projeto com git
 
-## Contributing
+- Abra um terminal e rode:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+git clone https://github.com/Equatorial-Passagem-de-Turno/equatorial-backend.git
+```
 
-## Code of Conduct
+### 1) Antes de tudo
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+- Tenha PHP 8.2+, Composer, Node.js 18+ e npm instalados.
+- Abra a pasta do projeto no VS Code.
 
-## Security Vulnerabilities
+### 2) Abra o terminal
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+- No VS Code: menu Terminal > New Terminal.
+- Um terminal aparece na parte de baixo.
 
-## License
+### 3) Entre na pasta do projeto
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- Digite `cd` e aperte Enter.
+- Se voce acabou de clonar, rode:
+
+```bash
+cd equatorial-backend
+```
+
+- Se precisar de caminho completo (ajuste se necessario):
+
+```bash
+cd C:\Users\wesle\Documents\equatorial-backend
+```
+
+### 4) Crie o arquivo de configuracao
+
+- O arquivo [.env](.env) precisa existir.
+- Se ele nao existe, crie copiando de [.env.example](.env.example):
+
+```bash
+copy .env.example .env
+```
+
+### 5) Instale as dependencias do PHP
+
+```bash
+composer install
+```
+
+### 6) Gere a chave do app
+
+```bash
+php artisan key:generate
+```
+
+- Abra [.env](.env) e confirme que `APP_KEY` nao esta vazio.
+
+### 7) Prepare o banco de dados
+
+- O padrao eh SQLite.
+- Se der erro dizendo que o banco nao existe, crie o arquivo:
+
+```bash
+New-Item -Path database/database.sqlite -ItemType File -Force
+```
+
+- Rode as migrations:
+
+```bash
+php artisan migrate
+```
+
+### 8) Instale dependencias do frontend
+
+```bash
+npm install
+```
+
+### 9) Gere os arquivos do frontend
+
+```bash
+npm run build
+```
+
+### 10) Rode o projeto
+
+```bash
+composer dev
+```
+
+- Nao feche esse terminal.
+- Abra o navegador e entre em: `http://localhost:8000`
+
+### 11) Parar o projeto
+
+- No terminal, aperte `Ctrl + C`.
+
+## Rodar em desenvolvimento
+
+Recomendado (sobe tudo junto):
+
+```bash
+composer dev
+```
+
+Alternativa simples (duas janelas de terminal):
+
+Terminal 1:
+
+```bash
+php artisan serve
+```
+
+Terminal 2:
+
+```bash
+npm run dev
+```
+
+API local: `http://localhost:8000`
+
+## Usabilidade do dia a dia
+
+- Rotas de API: [routes/api.php](routes/api.php)
+- Rotas web (se houver): [routes/web.php](routes/web.php)
+- Controllers: [app/Http/Controllers](app/Http/Controllers)
+- Models: [app/Models](app/Models)
+- Variaveis principais no [.env](.env): `APP_URL`, `DB_CONNECTION`, `DB_DATABASE`, `QUEUE_CONNECTION`
+- Para filas: `php artisan queue:listen` (ja incluso no `composer dev`)
+- Para dados de exemplo: `php artisan db:seed`
+
+## Docker (opcional)
+
+Existe um [Dockerfile](Dockerfile) para rodar via Apache.
+
+```bash
+docker build -t equatorial-backend .
+docker run --rm -p 8080:80 --name equatorial-backend equatorial-backend
+```
+
+Se o container ainda nao tiver chave ou banco criado, rode dentro dele:
+
+```bash
+php artisan key:generate
+php artisan migrate
+```
+
+## Problemas comuns
+
+- Erro sobre `APP_KEY`: rode `php artisan key:generate`.
+- Erro de banco: confira `DB_CONNECTION` e rode `php artisan migrate`.
+- Assets nao atualizam: rode `npm run dev` ou `npm run build`.
