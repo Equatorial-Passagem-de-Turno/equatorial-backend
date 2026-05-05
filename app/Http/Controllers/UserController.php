@@ -29,7 +29,7 @@ class UserController extends Controller
             $query = User::query()
                 ->where('id', '!=', $request->user()->id)
                 ->when(!$includeInactive, function ($q) {
-                    $q->where('active', 'true');
+                    $q->where('active', true);
                 })
                 ->orderBy('name');
 
@@ -81,7 +81,7 @@ class UserController extends Controller
             'password' => Hash::make($validated['password'] ?? 'password'),
             'role' => $validated['role'],
             'voltage_level' => $validated['voltage_level'],
-            'active' => 'true',
+            'active' => true,
             'operation_desk_id' => $deskId,
         ]);
 
@@ -115,7 +115,7 @@ class UserController extends Controller
         $user->email = $validated['email'];
         $user->voltage_level = $validated['voltage_level'];
         if (array_key_exists('active', $validated)) {
-            $user->active = $validated['active'] ? 'true' : 'false';
+            $user->active = $validated['active'] ? true : false;
         }
         $user->operation_desk_id = $deskId;
         $user->save();
@@ -161,7 +161,7 @@ class UserController extends Controller
     {
         $deskId = $request->input('operation_desk_id');
         if ($deskId !== null && $deskId !== '') {
-            OperationDesk::query()->whereKey($deskId)->where('is_active', 'true')->firstOrFail();
+            OperationDesk::query()->whereKey($deskId)->where('is_active', true)->firstOrFail();
 
             return (int) $deskId;
         }
@@ -169,7 +169,7 @@ class UserController extends Controller
         $deskName = trim((string) $request->input('operation_desk_name', ''));
         if ($deskName !== '') {
             $desk = OperationDesk::query()
-                ->where('is_active', 'true')
+                ->where('is_active', true)
                 ->where('name', $deskName)
                 ->first();
 

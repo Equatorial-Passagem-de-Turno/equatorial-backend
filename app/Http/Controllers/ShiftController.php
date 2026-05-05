@@ -107,7 +107,7 @@ class ShiftController extends Controller
         try {
             $activeShifts = Shift::query()
                 ->whereHas('user', function ($query) {
-                    $query->where('active', 'true')
+                    $query->where('active', true)
                         ->whereRaw('LOWER(role) = ?', ['operador']);
                 })
                 ->with([
@@ -227,7 +227,7 @@ class ShiftController extends Controller
 
         $recipients = User::query()
             ->whereIn('id', $request->input('recipientIds', []))
-            ->where('active', 'true')
+            ->where('active', true)
             ->get(['id', 'name', 'email']);
 
         if ($recipients->isEmpty()) {

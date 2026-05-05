@@ -11,8 +11,8 @@ class OperationDeskController extends Controller
 {
     public function index(): JsonResponse
     {
-        $desks = OperationDesk::where('is_active', 'true')->get(['id', 'code', 'name', 'location']);
-        
+        $desks = OperationDesk::where('is_active', true)->get(['id', 'code', 'name', 'location']);
+
         return response()->json($desks, 200);
     }
 
@@ -24,7 +24,7 @@ class OperationDeskController extends Controller
                 'string',
                 'max:255',
                 Rule::unique('operation_desks', 'name')->where(function ($query) {
-                    $query->where('is_active', 'true');
+                    $query->where('is_active', true);
                 }),
             ],
             'location' => ['nullable', 'string', 'max:255'],
@@ -34,7 +34,7 @@ class OperationDeskController extends Controller
             'code' => $this->generateNextCode(),
             'name' => $validated['name'],
             'location' => $validated['location'] ?? 'COI',
-            'is_active' => 'true',
+            'is_active' => true,
         ]);
 
         return response()->json($desk->only(['id', 'code', 'name', 'location']), 201);
@@ -52,7 +52,7 @@ class OperationDeskController extends Controller
                 Rule::unique('operation_desks', 'name')
                     ->ignore($desk->id)
                     ->where(function ($query) {
-                        $query->where('is_active', 'true');
+                        $query->where('is_active', true);
                     }),
             ],
             'location' => ['nullable', 'string', 'max:255'],
@@ -69,7 +69,7 @@ class OperationDeskController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $desk = OperationDesk::query()->findOrFail($id);
-        $desk->update(['is_active' => 'false']);
+        $desk->update(['is_active' => false]);
 
         return response()->json([
             'message' => 'Mesa desativada com sucesso.',
