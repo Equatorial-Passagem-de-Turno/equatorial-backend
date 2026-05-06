@@ -81,6 +81,13 @@ class OccurrenceController extends Controller
             $isInherited = $createdAt->lt($currentShift->start);
         }
 
+        $isStatusOpen = !$this->isClosedStatus((string) $occurrence->status);
+        $isOpenForDashboard = $isStatusOpen;
+        
+        if ($currentShift) {
+            $isOpenForDashboard = $isStatusOpen && ($occurrence->shift_id === $currentShift->id);
+        }
+
         return [
             'id' => $occurrence->id,
             'user_id' => $occurrence->user_id,
@@ -107,7 +114,7 @@ class OccurrenceController extends Controller
             'createdBy' => optional($occurrence->user)->name ?? 'Sistema',
             'is_inherited' => $isInherited,
             'origin' => $isInherited ? 'Herdada' : 'Atual',
-            'is_open' => !$this->isClosedStatus((string) $occurrence->status),
+            'is_open' => $isOpenForDashboard,
         ];
     }
 
@@ -507,7 +514,7 @@ class OccurrenceController extends Controller
                     'title' => $data['title'] ?? 'Sem Título',
                     'category' => $data['category'] ?? 'Herdada de Turno',
                     'priority' => $data['priority'] ?? 'medium',
-                    'status' => $data['status'] ?? 'open',
+                    'status' => 'open',
                     'description' => $data['description'] ?? '', 
                     'location' => $data['location'] ?? null,
                     'link_type' => $data['linkType'] ?? ($data['link_type'] ?? null),

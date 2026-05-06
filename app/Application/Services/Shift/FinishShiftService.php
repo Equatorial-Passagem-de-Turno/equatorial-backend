@@ -34,10 +34,12 @@ class FinishShiftService
                 'next_operator_id' => $nextOpId
             ]);
 
+            $resolvedTitles = Occurrence::whereIn('id', $resolvedOccurrences)->pluck('title')->toArray();
+
             $occurrences = Occurrence::where('shift_id', $shift->id)->get();
 
             foreach ($occurrences as $occurrence) {
-                $isResolvedNow = in_array($occurrence->id, $resolvedOccurrences);
+                $isResolvedNow = in_array($occurrence->id, $resolvedOccurrences) || in_array($occurrence->title, $resolvedTitles);
                 
                 $isAlreadyResolved = in_array(strtolower($occurrence->status), ['resolved', 'finished', 'resolvida', 'finalizada']);
 

@@ -352,7 +352,12 @@ class ShiftController extends Controller
                 'occurrences' => function($query) {
                     $query
                         ->select(['id', 'shift_id', 'title', 'priority', 'status', 'created_at'])
-                        ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled']);
+                        ->whereNotIn('status', ['resolved', 'Resolved', 'RESOLVED',
+                                                'finished', 'Finished', 'FINISHED',
+                                                'closed', 'Closed', 'CLOSED',
+                                                'transferred', 'Transferred', 'TRANSFERRED',
+                                                'canceled', 'Canceled', 'CANCELLED', 'cancelled',
+                                                'resolvida', 'Resolvida', 'finalizada', 'Finalizada']);
                 }
             ])
             ->where('user_id', $request->user()->id)
@@ -419,11 +424,20 @@ class ShiftController extends Controller
                 return response()->json(['occurrences' => []], 200);
             }
 
+            $ignoredStatuses = [
+                'resolved', 'Resolved', 'RESOLVED',
+                'finished', 'Finished', 'FINISHED',
+                'closed', 'Closed', 'CLOSED',
+                'transferred', 'Transferred', 'TRANSFERRED',
+                'canceled', 'Canceled', 'CANCELLED', 'cancelled',
+                'resolvida', 'Resolvida', 'finalizada', 'Finalizada'
+            ];
+
             $pendingOccurrences = \App\Models\Occurrence::with(['shift.user'])
                 ->whereHas('shift', function ($query) use ($currentShift) {
                     $query->where('operation_desk_id', $currentShift->operation_desk_id);
                 })
-                ->whereNotIn('status', ['resolved', 'finished', 'closed', 'cancelled', 'canceled'])
+                ->whereNotIn('status', $ignoredStatuses)
                 ->where('created_at', '<', $currentShift->start)
                 ->get();
 
