@@ -76,6 +76,12 @@ class OccurrenceController extends Controller
         $createdAt = $occurrence->created_at;
         $isInherited = false;
         $deskName = $occurrence->shift?->desk?->name;
+        $createdBy = optional($occurrence->user)->name;
+
+        if (!$createdBy) {
+            $linkType = strtolower((string) $occurrence->link_type);
+            $createdBy = $linkType === 'external' ? 'Externo' : 'Sistema';
+        }
 
         if ($currentShift && $createdAt) {
             $isInherited = $createdAt->lt($currentShift->start);
@@ -111,11 +117,72 @@ class OccurrenceController extends Controller
             'created_at' => $createdAt?->toISOString(),
             'updated_at' => $occurrence->updated_at?->toISOString(),
             'createdAt' => $createdAt ? $createdAt->format('d/m/Y H:i') : null,
-            'createdBy' => optional($occurrence->user)->name ?? 'Sistema',
+            'createdBy' => $createdBy,
             'is_inherited' => $isInherited,
             'origin' => $isInherited ? 'Herdada' : 'Atual',
             'is_open' => $isOpenForDashboard,
         ];
+    }
+
+    public function storePublic(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'description' => 'required|string',
+                'category' => 'nullable|string|max:255',
+                'priority' => 'nullable|string|max:50',
+                'status' => 'nullable|string|max:50',
+                'location' => 'nullable|array',
+                'linkType' => 'nullable|string|max:50',
+                'link_type' => 'nullable|string|max:50',
+                'linkValue' => 'nullable|string|max:255',
+                'link_value' => 'nullable|string|max:255',
+                'attachments' => 'nullable|array',
+                'comments' => 'nullable|array',
+                'reminders' => 'nullable|array',
+            ]);
+
+            $occurrenceId = $request->id ?? 'OC-' . date('Ym') . '-' . rand(1000, 9999);
+            $normalizedPayload = $this->normalizeOccurrencePayload($validated);
+            $comments = $normalizedPayload['comments'] ?? [];
+
+            $comments[] = [
+                'id' => 'sys-' . uniqid(),
+                'author' => 'Sistema',
+                'text' => 'Ocorrência externa registrada e encaminhada para supervisão.',
+                'type' => 'Sistema',
+                'createdAt' => now()->toISOString(),
+            ];
+
+            $occurrence = Occurrence::create([
+                'id' => $occurrenceId,
+                'user_id' => null,
+                'shift_id' => null,
+                'supervisor_id' => null,
+                'title' => $normalizedPayload['title'],
+                'category' => $normalizedPayload['category'] ?? 'Atendimento ao Cliente',
+                'priority' => $normalizedPayload['priority'] ?? 'média',
+                'status' => $normalizedPayload['status'] ?? 'Aberta',
+                'description' => $normalizedPayload['description'],
+                'location' => $normalizedPayload['location'] ?? null,
+                'link_type' => 'External',
+                'link_value' => $normalizedPayload['link_value'] ?? null,
+                'attachments' => $normalizedPayload['attachments'] ?? null,
+                'comments' => $comments,
+                'reminders' => $normalizedPayload['reminders'] ?? null,
+            ]);
+
+            $occurrence->load(['user', 'shift.desk']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Occurrence registered successfully.',
+                'data' => $this->mapOccurrenceForFrontend($occurrence, null),
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 400);
+        }
     }
 
     public function index(Request $request): JsonResponse
@@ -359,6 +426,115 @@ class OccurrenceController extends Controller
                 'data' => $this->mapOccurrenceForFrontend($occurrence, $targetShift)
             ], 201);
 
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 400);
+        }
+    }
+
+    public function assign(Request $request, string $id): JsonResponse
+    {
+        $accountRole = strtolower((string) $request->user()->role);
+        $isSupervisor = in_array($accountRole, ['supervisor', 'admin', 'adm'], true);
+
+        if (!$isSupervisor) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Apenas supervisores podem designar ocorrências.',
+            ], 403);
+        }
+
+        try {
+            $validated = $request->validate([
+                'assigned_operator_id' => 'nullable|integer|exists:users,id',
+                'assigned_operation_desk_id' => 'nullable|integer|exists:operation_desks,id',
+                'reason' => 'nullable|string|max:500',
+            ]);
+
+            $assignedOperatorId = $validated['assigned_operator_id'] ?? null;
+            $assignedDeskId = $validated['assigned_operation_desk_id'] ?? null;
+
+            if (!$assignedOperatorId && !$assignedDeskId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Selecione um operador ou uma mesa para direcionar a ocorrência.',
+                ], 422);
+            }
+
+            if ($assignedOperatorId && $assignedDeskId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Selecione apenas um destino: operador ou mesa.',
+                ], 422);
+            }
+
+            $targetShift = null;
+
+            if ($assignedOperatorId) {
+                $targetShift = Shift::query()
+                    ->with(['desk:id,name', 'user:id,name'])
+                    ->where('user_id', $assignedOperatorId)
+                    ->where('status', 'in_progress')
+                    ->orderByDesc('start')
+                    ->first();
+
+                if (!$targetShift) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'O operador selecionado não possui turno em andamento para receber a ocorrência.',
+                    ], 422);
+                }
+            }
+
+            if ($assignedDeskId) {
+                $targetShift = Shift::query()
+                    ->with(['desk:id,name', 'user:id,name'])
+                    ->where('operation_desk_id', $assignedDeskId)
+                    ->where('status', 'in_progress')
+                    ->orderByDesc('start')
+                    ->first();
+
+                if (!$targetShift) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'A mesa selecionada não possui turno em andamento para receber a ocorrência.',
+                    ], 422);
+                }
+            }
+
+            $occurrence = Occurrence::with(['user', 'shift.desk'])->findOrFail($id);
+            $comments = $occurrence->comments ?? [];
+            $reason = trim((string) ($validated['reason'] ?? ''));
+
+            $deskName = $targetShift?->desk?->name ?? 'Mesa';
+            $operatorName = $targetShift?->user?->name ?? 'Operador';
+
+            $commentText = "Ocorrência designada pelo supervisor {$request->user()->name} para {$operatorName} ({$deskName}).";
+            if ($reason !== '') {
+                $commentText .= " Motivo: {$reason}.";
+            }
+
+            $comments[] = [
+                'id' => 'sys-' . uniqid(),
+                'author' => 'Sistema',
+                'text' => $commentText,
+                'type' => 'Sistema',
+                'createdAt' => now()->toISOString(),
+            ];
+
+            $occurrence->update([
+                'user_id' => $targetShift?->user_id ?? $assignedOperatorId,
+                'shift_id' => $targetShift?->id,
+                'supervisor_id' => $request->user()->id,
+                'comments' => $comments,
+            ]);
+
+            $occurrence->refresh();
+            $occurrence->load(['user', 'shift.desk']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->mapOccurrenceForFrontend($occurrence, $targetShift),
+            ]);
         } catch (Exception $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], 400);
         }
