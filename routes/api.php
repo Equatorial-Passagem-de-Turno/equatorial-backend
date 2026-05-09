@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'authenticate']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+Route::post('/occurrences/public', [OccurrenceController::class, 'storePublic']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -53,6 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{id}', [OccurrenceController::class, 'destroy']);
         Route::post('/bulk', [OccurrenceController::class, 'bulkStore']);
         Route::post('/{id}/comments', [OccurrenceController::class, 'appendComment']);
+        Route::post('/{id}/assign', [OccurrenceController::class, 'assign']);
     });
 
     // Circuit Switching routes
