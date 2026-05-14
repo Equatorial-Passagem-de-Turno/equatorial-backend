@@ -10,10 +10,8 @@ Route::get('/', function () {
 
 Route::get('/setup-banco', function () {
     try {
-        // Executa as migrations forçadamente (necessário em produção)
         Artisan::call('migrate', ['--force' => true]);
         
-        // 2. Executa os seeders (popula as tabelas com os dados iniciais)
         Artisan::call('db:seed', ['--force' => true]);
 
         return response()->json([

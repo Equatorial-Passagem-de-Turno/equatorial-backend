@@ -29,14 +29,12 @@ class RegisterOccurrenceService
         DB::beginTransaction();
 
         try {
-            // 1. Validate if the user has an active shift
             $activeShift = $this->shiftRepository->findActiveShiftByUserId($userId);
 
             if (!$activeShift) {
                 throw new Exception('You must have a shift in progress to register an occurrence.');
             }
 
-            // 2. Instantiate the Domain Entity with translated properties
             $occurrence = new Occurrence(
                 id: null,
                 shiftId: $activeShift->id,
@@ -46,7 +44,6 @@ class RegisterOccurrenceService
                 status: OccurrenceStatus::OPEN
             );
 
-            // 3. Persist using the translated repository
             $savedOccurrence = $this->occurrenceRepository->save($occurrence);
 
             DB::commit();

@@ -45,7 +45,6 @@ class UnavailableEquipmentController extends Controller
     {
         $equipment = UnavailableEquipment::with(['user:id,name'])->findOrFail($id);
 
-        // Aqui você pode adicionar lógica para retornar URLs completas dos anexos, se necessário
 
         return response()->json($equipment);
     }

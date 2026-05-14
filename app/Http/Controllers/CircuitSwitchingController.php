@@ -62,8 +62,7 @@ class CircuitSwitchingController extends Controller
         }
 
         if (isset($data['new_deadline']) && $data['new_deadline'] != $circuit->deadline) {
-            // Aqui poderíamos salvar o histórico em uma tabela separada,
-            // mas por enquanto apenas atualizamos os campos
+
         }
 
         $circuit->update($data);

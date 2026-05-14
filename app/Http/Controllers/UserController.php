@@ -139,12 +139,10 @@ class UserController extends Controller
         $user = User::query()->where('role', 'operador')->findOrFail($id);
 
         DB::transaction(function () use ($user) {
-            // Remove referencias de repasse para evitar bloqueio de FK.
             Shift::query()
                 ->where('next_operator_id', $user->id)
                 ->update(['next_operator_id' => null]);
 
-            // Exclui turnos do operador; ocorrencias vinculadas ao turno sao removidas em cascata.
             Shift::query()
                 ->where('user_id', $user->id)
                 ->delete();

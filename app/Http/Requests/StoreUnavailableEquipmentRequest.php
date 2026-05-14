@@ -8,7 +8,7 @@ class StoreUnavailableEquipmentRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // Assumindo que a rota já estará protegida pelo middleware de autenticação
+        return true;
     }
 
     public function rules(): array
